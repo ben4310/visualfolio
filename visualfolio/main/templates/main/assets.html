@@ -1,9 +1,15 @@
 {% extends "main/base.html" %}
+{% load humanize %}
+{% load static %}
 {% block title %}
 Assets
 {% endblock title %}
+{% block extrahead %}
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="{% static 'main/js/relative-streamgraph.js' %}"></script>
+<script src="{% static 'main/js/donut.js' %}"></script>
+{% endblock extrahead %}
 {% block content %}
-{% load humanize %}
 <h1 class="font-display font-medium text-2xl text-(--first-text-color) mt-4 mb-6">Assets</h1>
 
 {% if has_enough_data %}
@@ -45,14 +51,14 @@ Assets
         <!-- Relative Streamgraph -->
         <div>
             <h2 class="font-medium text-(--first-text-color) mb-4">Asset allocation in time</h2>
-            <div class="h-[196px] bg-(--second-bg-color) border border-(--border-color) rounded-xl">
-                <div id="plot-container" class="">{{ relative_streamgraph|safe }}</div>
+            <div id="relative-streamgraph-container"
+                 class="h-[196px] bg-(--second-bg-color) border border-(--border-color) rounded-xl overflow-hidden">
             </div>
         </div>
     </div>
     <!-- Donut Chart -->
-    <div class="w-1/2 h-[450px] bg-(--second-bg-color) border border-(--border-color) rounded-xl overflow-hidden relative">
-        <div class="">{{ donut|safe }}</div>
+    <div id="assets-donut-container"
+         class="w-1/2 h-[450px] bg-(--second-bg-color) border border-(--border-color) rounded-xl overflow-hidden">
     </div>
 </div>
 <div class="flex justify-between items-end mt-8">
@@ -121,6 +127,16 @@ Assets
         </tbody>
     </table>
 </div>
+{% if has_enough_data %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    var rsData = {{ relative_streamgraph_data|safe }};
+    if (rsData.dates) window.initRelativeStreamgraph("relative-streamgraph-container", rsData);
+    var donutData = {{ donut_data|safe }};
+    if (donutData.slices) window.initDonut("assets-donut-container", donutData);
+});
+</script>
+{% endif %}
 <!-- JavaScript for Filtering -->
 <script>
     document.addEventListener('DOMContentLoaded', function() {

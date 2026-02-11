@@ -1,5 +1,4 @@
 django>=5.2
-plotly>=5.24.1
 pandas>=2.2.3
 psycopg2-binary>=2.9.6
 dj-database-url>=1.0.0

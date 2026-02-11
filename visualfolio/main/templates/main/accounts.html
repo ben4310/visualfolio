@@ -1,9 +1,14 @@
 {% extends "main/base.html" %}
+{% load humanize %}
+{% load static %}
 {% block title %}
     Accounts
 {% endblock title %}
+{% block extrahead %}
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="{% static 'main/js/donut.js' %}"></script>
+{% endblock extrahead %}
 {% block content %}
-    {% load humanize %}
     <h1 class="font-display font-medium text-2xl text-(--first-text-color) mt-4 mb-6">Accounts</h1>
     {% if has_data %}
     <div class="flex w-full justify-between space-x-8">
@@ -71,20 +76,26 @@
         <div class="w-2/5 flex flex-col justify-start space-y-8">
             <div>
             <h2 class="font-medium text-(--first-text-color) mb-4">Value allocation by account</h2>
-            <div id="plot-container-accounts"
-                 class="h-[210px] bg-(--second-bg-color) border border-(--border-color) rounded-xl">
-                {{ accounts_donut|safe }}
+            <div id="accounts-donut-container"
+                 class="h-[210px] bg-(--second-bg-color) border border-(--border-color) rounded-xl overflow-hidden">
             </div>
         </div>
         <div>
             <h2 class="font-medium text-(--first-text-color) mb-4">Value allocation by country</h2>
-            <div id="plot-container-accounts-country"
-                 class="h-[210px] bg-(--second-bg-color) border border-(--border-color) rounded-xl">
-                {{ accounts_country_donut|safe }}
+            <div id="accounts-country-donut-container"
+                 class="h-[210px] bg-(--second-bg-color) border border-(--border-color) rounded-xl overflow-hidden">
             </div>
         </div>
         </div>
     </div>
+    <script>
+    document.addEventListener("DOMContentLoaded", function () {
+        var acctData = {{ accounts_donut_data|safe }};
+        if (acctData.slices) window.initDonut("accounts-donut-container", acctData);
+        var countryData = {{ accounts_country_donut_data|safe }};
+        if (countryData.slices) window.initDonut("accounts-country-donut-container", countryData);
+    });
+    </script>
     <style>
         .account-tag {
           background-color: var(--bg-color-light);

@@ -1,16 +1,21 @@
 {% extends "main/base.html" %}
-{% block title %}Earnings{% endblock title %}
-{% block content %}
 {% load humanize %}
 {% load custom_filters %}
+{% load static %}
+{% block title %}Earnings{% endblock title %}
+{% block extrahead %}
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="{% static 'main/js/barplot.js' %}"></script>
+{% endblock extrahead %}
+{% block content %}
 <h1 class="font-display text-2xl text-(--first-text-color) mt-4 mb-6">Earnings</h1>
 
 {% if has_enough_data %}
 <div class="flex flex-col space-y-8 mt-4">
 
     <!-- Barplot -->
-    <div class="flex-grow bg-(--second-bg-color) border border-(--border-color) rounded-xl">
-        <div class="w-full h-[370px]">{{ graph|safe }}</div>
+    <div id="earnings-barplot-container"
+         class="flex-grow bg-(--second-bg-color) border border-(--border-color) rounded-xl h-[370px] overflow-hidden">
     </div>
 
     <!-- Sources of earnings table -->
@@ -158,6 +163,12 @@
     </div>
 </div>
 
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    var bpData = {{ barplot_data|safe }};
+    if (bpData.records) window.initBarplot("earnings-barplot-container", bpData);
+});
+</script>
 <style>
     .source-tag {
       background-color: var(--bg-color);

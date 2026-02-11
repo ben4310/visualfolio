@@ -22,13 +22,10 @@ from django.conf import settings
 
 from main.utils.market_data import get_prices_daily
 from main.services.stateless.visualization import (
-    generate_streamgraph,
     hex_to_hsl_components,
-    generate_relative_streamgraph,
-    generate_assets_donut,
-    generate_accounts_donut,
-    generate_accounts_country_donut,
-    generate_earnings_barplot,
+    generate_shades,
+    humanize_number,
+    opacity,
 )
 from main.services.stateless.calculation import BalanceCalculationService
 
@@ -147,7 +144,7 @@ class OverviewView(LoginRequiredMixin, TemplateView):
             context["total_asset_value"] = 0
             context["liquid_asset_value"] = 0
             context["base_currency"] = settings.BASE_CURRENCY["symbol"]
-            context["graph"] = ""
+            context["graph_data"] = "{}"
             return context
 
         # Get latest balances
@@ -359,14 +356,57 @@ class OverviewView(LoginRequiredMixin, TemplateView):
 
         last_group_name = groups[-1]
 
-        # Pass context data to template
-        context["graph"] = generate_streamgraph(
-            df,
-            self.request.theme,
-            settings.BASE_CURRENCY["symbol"],
-            color_map,
-            last_group_name,
+        # Serialize streamgraph data for client-side D3 rendering
+        theme = self.request.theme
+        opacity_val = opacity[theme]
+        boundary_cols = [c for c in df.columns if c.endswith("_internal_boundary")]
+        boundaries = (
+            ["rel_value_transactions_only"]
+            + boundary_cols
+            + ["inverted_rel_value_capital_gain_only"]
         )
+
+        layers = []
+        for i, group_name in enumerate(groups):
+            upper_key = boundaries[i]
+            lower_key = boundaries[i + 1]
+            color = color_map.at[group_name, f"hsl_{theme}_background"]
+            color = color.replace("hsl(", "hsla(").replace(")", f",{opacity_val})")
+            layers.append({
+                "name": group_name,
+                "upper": df[upper_key].tolist(),
+                "lower": df[lower_key].tolist(),
+                "color": color,
+            })
+
+        # Compute y-axis gridlines and ruler metadata
+        y_data_min = df["inverted_rel_value_capital_gain_only"].min()
+        y_data_max = df["rel_value_transactions_only"].max()
+        y_data_range = y_data_max - y_data_min
+        y_min = y_data_min - (y_data_range * 0.25)
+        y_max = y_data_max + (y_data_range * 0.15)
+
+        nice_intervals = [x * 10**i for i in range(0, 10) for x in (1, 2, 5)]
+        target_interval = (y_max - y_min) / 10
+        chosen_interval = min(nice_intervals, key=lambda x: abs(x - target_interval))
+        num_lines = int((y_max - y_min) // chosen_interval)
+        if num_lines % 2 == 1:
+            num_lines += 1
+        y_axis_lines = [y_min + i * chosen_interval for i in range(num_lines + 1)]
+
+        graph_data = json.dumps({
+            "dates": [d.isoformat() for d in df["date"]],
+            "layers": layers,
+            "values": df["value"].tolist(),
+            "yMin": y_min,
+            "yMax": y_min + chosen_interval * num_lines * 1.01,
+            "yAxisLines": y_axis_lines,
+            "rulerLabel": f"{settings.BASE_CURRENCY['symbol']} {humanize_number(chosen_interval)}",
+            "baseCurrency": settings.BASE_CURRENCY["symbol"],
+            "theme": theme,
+        })
+
+        context["graph_data"] = graph_data
         context["total_asset_value"] = total_asset_value
         context["liquid_asset_value"] = liquid_asset_value
         context["base_currency"] = settings.BASE_CURRENCY["symbol"]
@@ -394,10 +434,10 @@ class AssetsView(LoginRequiredMixin, TemplateView):
 
         if not has_enough_data:
             context["has_enough_data"] = False
-            context["donut"] = ""
+            context["donut_data"] = "{}"
             context["assets"] = []
             context["asset_classes"] = []
-            context["relative_streamgraph"] = ""
+            context["relative_streamgraph_data"] = "{}"
             context["base_currency"] = settings.BASE_CURRENCY["symbol"]
             return context
 
@@ -549,11 +589,58 @@ class AssetsView(LoginRequiredMixin, TemplateView):
                                ) * 100
 
         tot_value = assets["tot_current_value"].sum()
+        theme = self.request.theme
+        opacity_val = opacity[theme]
 
-        # Pass data to template
-        context["donut"] = generate_assets_donut(
-            assets, self.request.theme, tot_value, settings.BASE_CURRENCY["symbol"]
+        # Serialize relative streamgraph data for D3
+        pivot_for_stream = pivot.copy()
+        pivot_for_stream.set_index("date", inplace=True)
+        df_norm = pivot_for_stream.div(pivot_for_stream.sum(axis=1), axis=0) * 100
+
+        asset_class_color_idx = asset_class_sums.set_index("asset_class")
+
+        rel_stream_series = []
+        for col in df_norm.columns:
+            fill_color = asset_class_color_idx.at[col, f"hsl_{theme}_background"]
+            fill_color = fill_color.replace("hsl(", "hsla(").replace(
+                ")", f",{opacity_val})"
+            )
+            rel_stream_series.append({
+                "name": col,
+                "values": df_norm[col].tolist(),
+                "color": fill_color,
+            })
+
+        context["relative_streamgraph_data"] = json.dumps({
+            "dates": [d.isoformat() for d in df_norm.index],
+            "series": rel_stream_series,
+        })
+
+        # Serialize assets donut data for D3
+        assets_sorted = assets.sort_values(
+            ["asset_class_tot_value", "tot_current_value"]
         )
+        assets_sorted["color"] = assets_sorted.groupby("asset_class")["color"].transform(
+            lambda cs: generate_shades(cs.iloc[0], len(cs), theme=theme)
+        )
+
+        donut_slices = []
+        for _, row in assets_sorted.iterrows():
+            donut_slices.append({
+                "label": row["asset"],
+                "value": row["tot_current_value"],
+                "color": row["color"],
+            })
+
+        context["donut_data"] = json.dumps({
+            "slices": donut_slices,
+            "centerText": f"{tot_value:,.2f} {settings.BASE_CURRENCY['symbol']}",
+            "baseCurrency": settings.BASE_CURRENCY["symbol"],
+            "hole": 0.7,
+            "layout": "labels-outside",
+        })
+
+        # Pass table data to template
         context["assets"] = (
             assets.sort_values("tot_current_value", ascending=False)
             .drop(columns=["asset_class_tot_value"])
@@ -562,9 +649,6 @@ class AssetsView(LoginRequiredMixin, TemplateView):
         context["asset_classes"] = asset_class_sums.sort_values(
             "asset_class_tot_value", ascending=False
         ).to_dict("records")
-        context["relative_streamgraph"] = generate_relative_streamgraph(
-            pivot, asset_class_sums, self.request.theme
-        )
         context["base_currency"] = settings.BASE_CURRENCY["symbol"]
         context["has_enough_data"] = True
 
@@ -583,8 +667,8 @@ class AccountsView(LoginRequiredMixin, TemplateView):
 
         if not has_data:
             context["has_data"] = False
-            context["accounts_donut"] = ""
-            context["accounts_country_donut"] = ""
+            context["accounts_donut_data"] = "{}"
+            context["accounts_country_donut_data"] = "{}"
             context["accounts_table"] = []
             context["base_currency"] = settings.BASE_CURRENCY["symbol"]
             return context
@@ -720,7 +804,8 @@ class AccountsView(LoginRequiredMixin, TemplateView):
             columns=["balance", "asset", "current_price"], inplace=True
         )
 
-        # Generate accounts donut plot
+        # Serialize accounts donut data for D3
+        theme = self.request.theme
         d = {
             "account_total_value": ("current_value", "sum"),
             "hsl_dark_background": ("hsl_dark_background", "first"),
@@ -728,21 +813,46 @@ class AccountsView(LoginRequiredMixin, TemplateView):
             "country": ("account_country", "first"),
         }
         accounts_df = balances_df.groupby(["account"]).agg(**d).reset_index()
-        accounts_donut = generate_accounts_donut(
-            accounts_df, self.request.theme, settings.BASE_CURRENCY["symbol"]
-        )
+        accounts_df.sort_values("account_total_value", inplace=True)
 
-        # Generate account countries donut plot
+        acct_slices = []
+        for _, row in accounts_df.iterrows():
+            acct_slices.append({
+                "label": row["account"],
+                "value": row["account_total_value"],
+                "color": row[f"hsl_{theme}_background"],
+            })
+
+        context["accounts_donut_data"] = json.dumps({
+            "slices": acct_slices,
+            "baseCurrency": settings.BASE_CURRENCY["symbol"],
+            "hole": 0.6,
+            "layout": "legend-right",
+        })
+
+        # Serialize accounts country donut data for D3
         d = {"account_total_value": ("current_value", "sum")}
         accounts_country_df = (
             balances_df.groupby(["account_country"]).agg(**d).reset_index()
         )
-        accounts_country_donut = generate_accounts_country_donut(
-            accounts_country_df, self.request.theme, settings.BASE_CURRENCY["symbol"]
-        )
+        accounts_country_df.sort_values("account_total_value", inplace=True)
 
-        context["accounts_donut"] = accounts_donut
-        context["accounts_country_donut"] = accounts_country_donut
+        country_colors = ["#2ab668", "#3255a4"]
+        country_slices = []
+        for i, (_, row) in enumerate(accounts_country_df.iterrows()):
+            country_slices.append({
+                "label": row["account_country"],
+                "value": row["account_total_value"],
+                "color": country_colors[i % len(country_colors)],
+            })
+
+        context["accounts_country_donut_data"] = json.dumps({
+            "slices": country_slices,
+            "baseCurrency": settings.BASE_CURRENCY["symbol"],
+            "hole": 0.6,
+            "layout": "legend-right",
+        })
+
         context["accounts_table"] = account_sums.to_dict("records")
         context["base_currency"] = settings.BASE_CURRENCY["symbol"]
         context["has_data"] = True
@@ -822,7 +932,7 @@ class EarningsView(LoginRequiredMixin, TemplateView):
 
         # Check if we have enough data points (at least 2 transactions)
         if len(df) < 2:
-            context["graph"] = ""
+            context["barplot_data"] = "{}"
             context["earnings_sources"] = []
             context["base_currency"] = settings.BASE_CURRENCY["symbol"]
             context["has_enough_data"] = False
@@ -911,9 +1021,24 @@ class EarningsView(LoginRequiredMixin, TemplateView):
             "total_volume_entity_percentage", ascending=False
         )
         context["earnings_sources"] = df_trends.to_dict("records")
-        context["graph"] = generate_earnings_barplot(
-            grouped_df, self.request.theme, settings.BASE_CURRENCY["symbol"]
+
+        # Serialize barplot data for D3
+        grouped_df["month_str"] = grouped_df["month"].apply(
+            lambda x: pd.Timestamp(x).strftime("%b %Y")
         )
+        bar_records = []
+        for _, row in grouped_df.iterrows():
+            bar_records.append({
+                "month": row["month_str"],
+                "entity": row["entity"],
+                "amount": row["amount"],
+                "color": row["color"],
+            })
+
+        context["barplot_data"] = json.dumps({
+            "records": bar_records,
+            "baseCurrency": settings.BASE_CURRENCY["symbol"],
+        })
         context["base_currency"] = settings.BASE_CURRENCY["symbol"]
         context["has_enough_data"] = True
 

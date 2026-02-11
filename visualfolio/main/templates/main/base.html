@@ -284,17 +284,6 @@
 </div>
 <script>
     window.onload = function () {
-        // Select all elements whose id starts with "plot-container"
-        const plotContainers = document.querySelectorAll('[id^="plot-container"]');
-
-        // For each matching element
-        plotContainers.forEach((plotContainer) => {
-            if (plotContainer) {
-                // Apply resize
-                Plotly.Plots.resize(plotContainer.querySelector('.js-plotly-plot'));
-            }
-        });
-
         // Hide spinner
         const spinner = document.getElementById('spinner');
         spinner.classList.add('hidden');
