@@ -2067,3 +2067,35 @@ class DeleteTradeView(LoginRequiredMixin, View):
             return JsonResponse({"success": False, "error": str(exc.message)}, status=400)
         
         return JsonResponse({"success": True})
+
+
+class SettingsView(LoginRequiredMixin, View):
+    """User settings page."""
+    login_url = "login"
+
+    def get(self, request, *args, **kwargs):
+        context = {
+            "current_view": "settings",
+            "user": request.user,
+        }
+        return render(request, "main/settings.html", context)
+
+    def post(self, request, *args, **kwargs):
+        user = request.user
+        
+        sync_frequency = request.POST.get("sync_frequency")
+        sync_preferred_hour = request.POST.get("sync_preferred_hour")
+        
+        if sync_frequency in dict(user.SYNC_FREQUENCY_CHOICES):
+            user.sync_frequency = sync_frequency
+        
+        try:
+            hour = int(sync_preferred_hour)
+            if 0 <= hour <= 23:
+                user.sync_preferred_hour = hour
+        except (ValueError, TypeError):
+            pass
+        
+        user.save()
+        messages.success(request, "Settings saved successfully")
+        return redirect("settings")

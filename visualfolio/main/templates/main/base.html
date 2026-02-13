@@ -236,7 +236,8 @@
                         <span>Configuration</span> </a>
                 </li>
                 <li>
-                    <a class=" flex items-center p-2 rounded-md group text-(--disabled-text-color)">
+                    <a class="flex items-center p-2 rounded-md group text-(--first-text-color) hover:bg-(--third-bg-color) {% if current_view == 'settings' %} bg-(--third-bg-color)"
+                       {% else %} " href="{% url 'settings' %}" {% endif %}>
                         <svg class="mr-2 w-4 h-4 text-current"
                              aria-hidden="true"
                              xmlns="http://www.w3.org/2000/svg"

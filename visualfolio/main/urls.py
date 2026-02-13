@@ -25,6 +25,7 @@ from .views import (
     DeleteTransactionView,
     AddTradeView,
     DeleteTradeView,
+    SettingsView,
 )
 
 urlpatterns = [
@@ -37,6 +38,7 @@ urlpatterns = [
     path('earnings/', EarningsView.as_view(), name='earnings'),
     path('transactions/', TransactionsView.as_view(), name='transactions'),
     path('configuration/', ConfigurationView.as_view(), name='configuration'),
+    path('settings/', SettingsView.as_view(), name='settings'),
     path('configuration/add-account/', AddAccountView.as_view(), name='add_account'),
     path('configuration/add-account/manual/', AddManualAccountView.as_view(), name='add_manual_account'),
 

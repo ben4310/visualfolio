@@ -1,0 +1,96 @@
+{% extends "main/base.html" %}
+{% load static %}
+{% block title %}
+    Settings
+{% endblock title %}
+{% block content %}
+    <h1 class="font-display font-medium text-2xl text-(--first-text-color) mt-4 mb-6">Settings</h1>
+
+    <div class="max-w-4xl">
+        <form method="post" action="{% url 'settings' %}">
+            {% csrf_token %}
+            
+            <!-- General Section -->
+            <div class="mb-8">
+                <h2 class="font-medium text-lg text-(--first-text-color) mb-3">General</h2>
+                <div class="text-(--third-text-color) text-sm">
+                    No settings available yet.
+                </div>
+            </div>
+
+            <hr class="border-(--border-color) my-8">
+
+            <!-- Appearance Section -->
+            <div class="mb-8">
+                <h2 class="font-medium text-lg text-(--first-text-color) mb-3">Appearance</h2>
+                <div class="text-(--third-text-color) text-sm">
+                    No settings available yet.
+                </div>
+            </div>
+
+            <hr class="border-(--border-color) my-8">
+
+            <!-- Bank Data Sync Section -->
+            <div class="mb-8">
+                <h2 class="font-medium text-lg text-(--first-text-color) mb-3">Bank Data Sync</h2>
+                
+                <div class="space-y-6">
+                    <!-- Sync Frequency -->
+                    <div>
+                        <label for="sync_frequency" class="block text-sm font-medium text-(--third-text-color) mb-2">
+                            Automatic Sync Frequency
+                        </label>
+                        <select name="sync_frequency" id="sync_frequency"
+                                class="w-full max-w-md bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)">
+                            {% for value, label in user.SYNC_FREQUENCY_CHOICES %}
+                            <option value="{{ value }}" {% if user.sync_frequency == value %}selected{% endif %}>
+                                {{ label }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <p class="text-xs text-(--third-text-color) mt-2">
+                            Choose how often your bank accounts should automatically sync
+                        </p>
+                    </div>
+
+                    <!-- Preferred Time -->
+                    <div>
+                        <label for="sync_preferred_hour" class="block text-sm font-medium text-(--third-text-color) mb-2">
+                            First Sync Time of Day
+                        </label>
+                        <select name="sync_preferred_hour" id="sync_preferred_hour"
+                                class="w-full max-w-md bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)">
+                            {% for hour in "0123456789012345678901234"|make_list %}
+                                {% with hour_int=forloop.counter0 %}
+                                <option value="{{ hour_int }}" {% if user.sync_preferred_hour == hour_int %}selected{% endif %}>
+                                    {{ hour_int|stringformat:"02d" }}:00 {% if hour_int < 12 %}AM{% else %}PM{% endif %}
+                                </option>
+                                {% endwith %}
+                            {% endfor %}
+                        </select>
+                        <p class="text-xs text-(--third-text-color) mt-2">
+                            Time of the first sync of the day (UTC time). Subsequent syncs occur at regular intervals from this time.
+                        </p>
+                    </div>
+
+                    <!-- Last Auto Sync Info -->
+                    {% if user.last_auto_sync %}
+                    <div class="pt-4 border-t border-(--border-color)">
+                        <div class="text-xs text-(--third-text-color)">
+                            Last automatic sync: {{ user.last_auto_sync|date:"Y-m-d H:i" }} UTC
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Save Button -->
+            <div class="flex justify-start mt-6">
+                <button type="submit"
+                        class="px-4 py-2 bg-(--first-accent-color) text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
+                    Save Settings
+                </button>
+            </div>
+        </form>
+    </div>
+{% endblock content %}
