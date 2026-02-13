@@ -47,7 +47,7 @@
       .x(function (d) { return x(d.data.date); })
       .y0(function (d) { return y(d[0]); })
       .y1(function (d) { return y(d[1]); })
-      .curve(d3.curveLinear);
+      .curve(d3.curveStepAfter);
 
     // SVG
     var svg = d3.select(el).append("svg")
