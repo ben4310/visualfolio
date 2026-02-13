@@ -220,7 +220,8 @@
                 </div>
                 <!-- Configuration Section -->
                 <li>
-                    <a class="flex items-center p-2 rounded-md group text-(--disabled-text-color)">
+                    <a class="flex items-center p-2 rounded-md group text-(--first-text-color) hover:bg-(--third-bg-color) {% if current_view == 'configuration' %} bg-(--third-bg-color)"
+                       {% else %} " href="{% url 'configuration' %}" {% endif %}>
                         <svg class="mr-2 w-4 h-4 text-current"
                              aria-hidden="true"
                              xmlns="http://www.w3.org/2000/svg"
