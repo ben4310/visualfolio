@@ -1,0 +1,60 @@
+{% extends "main/base.html" %}
+{% block title %}
+    Add manual account
+{% endblock title %}
+
+{% block content %}
+    <h1 class="font-display font-medium text-2xl text-(--first-text-color) mt-4 mb-6">Add a manual account</h1>
+
+    <div class="max-w-2xl bg-(--second-bg-color) border border-(--border-color) rounded-xl p-6">
+        <form method="post" class="space-y-5">
+            {% csrf_token %}
+
+            <div>
+                <label for="name" class="block text-sm font-medium text-(--first-text-color) mb-2">Account name</label>
+                <input id="name"
+                       name="name"
+                       type="text"
+                       maxlength="255"
+                       required
+                       value="{{ form_data.name }}"
+                       class="w-full px-3 py-2 rounded-lg border border-(--border-color) bg-(--first-bg-color) text-(--first-text-color) focus:outline-none focus:ring-2 focus:ring-(--first-accent-color)">
+            </div>
+
+            <div>
+                <label for="country" class="block text-sm font-medium text-(--first-text-color) mb-2">Country</label>
+                <select id="country"
+                        name="country"
+                        required
+                        class="w-full px-3 py-2 rounded-lg border border-(--border-color) bg-(--first-bg-color) text-(--first-text-color) focus:outline-none focus:ring-2 focus:ring-(--first-accent-color)">
+                    <option value="">Select a country</option>
+                    {% for country_name, country_label in countries %}
+                        <option value="{{ country_name }}" {% if form_data.country == country_name %}selected{% endif %}>
+                            {{ country_label }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label for="color" class="block text-sm font-medium text-(--first-text-color) mb-2">Account color</label>
+                <input id="color"
+                       name="color"
+                       type="color"
+                       value="{{ form_data.color|default:'#4b8dd3' }}"
+                       class="h-10 w-20 rounded border border-(--border-color) bg-(--first-bg-color)">
+            </div>
+
+            <div class="flex items-center gap-3 pt-2">
+                <button type="submit"
+                        class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-(--first-accent-color) hover:bg-(--second-accent-color) transition-colors">
+                    Create account
+                </button>
+                <a href="{% url 'add_account' %}"
+                   class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-(--first-text-color) bg-(--first-bg-color) border border-(--border-color) hover:bg-(--third-bg-color) transition-colors">
+                    Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+{% endblock content %}

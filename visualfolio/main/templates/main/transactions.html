@@ -144,12 +144,12 @@ Transactions
                         <div class="flex items-center px-2 py-1">
                             <input id="account-{{ forloop.counter }}"
                                    type="checkbox"
-                                   value="{{ account.institution_name }}"
+                                   value="{{ account.name }}"
                                    class="account-checkbox w-3 h-3 text-(var(--accent_color)) rounded focus:ring-(var(--accent_color))"
                                    checked>
                             <label for="account-{{ forloop.counter }}"
                                    class="ml-2 text-xs font-medium text-(--first-text-color)">
-                                {{ account.institution_name }}
+                                {{ account.name }}
                             </label>
                         </div>
                     </li>
@@ -228,7 +228,7 @@ Transactions
                 data-entity="{{ transaction.entity|lower }}"
                 data-type="{% if transaction.amount >= 0 %}incoming{% else %}outgoing{% endif %}"
                 data-currency="{{ transaction.asset.name }}"
-                data-account="{{ transaction.account.institution_name }}"
+                data-account="{{ transaction.account.name }}"
                 data-date="{{ transaction.datetime|date:'Y-m-d' }}">
                 <td class="px-6 py-2 text-center text-(--second-text-color)"
                     style="--bg-color-light: {{ transaction.hsl_light_background }};
@@ -237,7 +237,7 @@ Transactions
                                            --text-color-dark: {{ transaction.hsl_dark_text }}">
                     <div class="inline-flex relative items-center">
                                         <span class="relative text-xs font-medium px-2.5 pb-[0.05rem] pt-0.5 rounded-full inline-block transaction-tag">
-                                            {{ transaction.account.institution_name }}
+                                            {{ transaction.account.name }}
                                         </span>
                     </div>
                 </td>

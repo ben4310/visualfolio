@@ -75,7 +75,13 @@ ENV_CONFIG: Dict[str, EnvVarConfig] = {
     },
     "DATABASE_URL": {
         "required": True
-    }
+    },
+    "GOCARDLESS_SECRET_ID": {
+        "default": None
+    },
+    "GOCARDLESS_SECRET_KEY": {
+        "default": None
+    },
 }
 
 
@@ -94,6 +100,14 @@ CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in csrf_origins_str.split(',')
 # -----------------------------------------------------------------------------
 BASE_CURRENCY = {"code": "EUR", "symbol": "€"}
 DEFAULT_THEME = "light"
+BALANCE_HISTORY_TIMESPAN_DAYS = 365
+
+# GoCardless Bank Account Data API
+# -----------------------------------------------------------------------------
+GOCARDLESS_SECRET_ID = get_env_var("GOCARDLESS_SECRET_ID", ENV_CONFIG["GOCARDLESS_SECRET_ID"])
+GOCARDLESS_SECRET_KEY = get_env_var("GOCARDLESS_SECRET_KEY", ENV_CONFIG["GOCARDLESS_SECRET_KEY"])
+GOCARDLESS_BASE_URL = "https://bankaccountdata.gocardless.com"
+GOCARDLESS_ENABLED = GOCARDLESS_SECRET_ID is not None and GOCARDLESS_SECRET_KEY is not None
 
 
 # Application

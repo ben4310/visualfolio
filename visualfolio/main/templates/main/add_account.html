@@ -1,0 +1,35 @@
+{% extends "main/base.html" %}
+{% block title %}
+    Add an account
+{% endblock title %}
+
+{% block content %}
+    <h1 class="font-display font-medium text-2xl text-(--first-text-color) mt-4 mb-6">Add an account</h1>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {% if gocardless_enabled %}
+            <a href="{% url 'configuration' %}?step=bank_select"
+               class="block rounded-xl border border-(--border-color) bg-(--second-bg-color) p-8 hover:bg-(--third-bg-color) transition-colors">
+                <div class="text-lg font-medium text-(--second-text-color) mb-3">Sync account</div>
+                <p class="text-(--third-text-color)">
+                    Connect to your bank via Open Banking and have transactions synced automatically.
+                </p>
+            </a>
+        {% else %}
+            <div class="rounded-xl border border-(--border-color) bg-(--second-bg-color) p-8 opacity-70">
+                <div class="text-lg font-medium text-(--second-text-color) mb-3">Sync account</div>
+                <p class="text-(--third-text-color)">
+                    Bank syncing is currently unavailable because GoCardless credentials are not configured.
+                </p>
+            </div>
+        {% endif %}
+
+        <a href="{% url 'add_manual_account' %}"
+           class="block rounded-xl border border-(--border-color) bg-(--second-bg-color) p-8 hover:bg-(--third-bg-color) transition-colors">
+            <div class="text-lg font-medium text-(--second-text-color) mb-3">Manual account</div>
+            <p class="text-(--third-text-color)">
+                Transactions and balances are entered manually. Useful for banks that do not support syncing, or physical cash balances.
+            </p>
+        </a>
+    </div>
+{% endblock content %}

@@ -27,9 +27,8 @@ erDiagram
     %% -------------------------
     CUSTOM_USER {
         Int id PK
-        DateTime last_update
         DateTime last_full_refresh
-        %% plus AbstractUser fields
+        %% plus AbstractUser fields (username, email, password, etc.)
     }
 
     %% -------------------------
@@ -37,16 +36,49 @@ erDiagram
     %% -------------------------
     ACCOUNT {
         Int id PK
-        Char(255) institution_name
+        Char(255) name
         Char(255) country
-        UUID nordigen_code
+        UUID gocardless_code
         Char(7) color
+        Char(64) gocardless_institution_id
+        Int transaction_total_days
+        DateTime last_successful_sync
+        DateTime access_expires_at
+        Char(10) sync_status
+        Text sync_error
+        Int account_success_limit
+        Int account_success_remaining
+        DateTime account_success_reset
         %% FK to CustomUser(id)
-        %% unique(institution_name, user)
+        %% gocardless_code is nullable and unique
+        %% gocardless_institution_id is nullable
+        %% transaction_total_days is nullable
+        %% last_successful_sync is nullable
+        %% access_expires_at is nullable
+        %% sync_status choices: idle, syncing, success, error (default: idle)
+        %% sync_error is nullable
+        %% account_success_limit is nullable
+        %% account_success_remaining is nullable
+        %% account_success_reset is nullable
+        %% unique(name, user)
+    }
+
+    %% -------------------------
+    %% ENTITY: AccountAsset
+    %% Links Account to Asset, stores GoCardless metadata
+    %% -------------------------
+    ACCOUNT_ASSET {
+        Int id PK
+        Char(64) gocardless_account_id
+        %% FK to Account(id)
+        %% FK to Asset(code)
+        %% gocardless_account_id is nullable
+        %% unique(account, asset)
     }
 
     %% -------------------------
     %% ENTITY: Transaction
+    %% Includes both regular transactions and trade sides
     %% -------------------------
     TRANSACTION {
         Int id PK
@@ -54,22 +86,18 @@ erDiagram
         Float amount
         DateTime datetime
         Char(31) category
+        Boolean is_trade_side
+        Int paired_transaction_id
         %% amount cannot be zero
+        %% datetime cannot be in future
+        %% entity is required for non-trade transactions
         %% FK to Account(id)
         %% FK to Asset(code)
-    }
-
-    %% -------------------------
-    %% ENTITY: Trade
-    %% -------------------------
-    TRADE {
-        Int id PK
-        Float amount
-        DateTime datetime
-        %% amount cannot be zero
-        %% FK to Account(id)
-        %% FK to Asset(code) (trade_asset)
-        %% FK to Asset(code) (counter_asset)
+        %% FK to Transaction(id) via paired_transaction (self-reference)
+        %% category is nullable
+        %% paired_transaction_id is nullable
+        %% is_trade_side defaults to False, indexed
+        %% Trade sides are linked via paired_transaction
     }
 
     %% -------------------------
@@ -79,10 +107,45 @@ erDiagram
         Int id PK
         Date date
         Float balance
+        %% balance must be >= 0.0
         %% FK to Account(id)
         %% FK to Asset(code)
         %% unique(account, asset, date)
         %% ordering: (account, asset, date)
+    }
+
+    %% -------------------------
+    %% ENTITY: GoCardlessToken
+    %% Singleton model for app-level API tokens
+    %% -------------------------
+    GOCARDLESS_TOKEN {
+        Int id PK
+        Text access_token
+        DateTime access_expires_at
+        Text refresh_token
+        DateTime refresh_expires_at
+        %% Only one row should exist (pk=1)
+    }
+
+    %% -------------------------
+    %% ENTITY: Requisition
+    %% Tracks GoCardless bank connection flow
+    %% -------------------------
+    REQUISITION {
+        UUID id PK
+        Char(64) institution_id
+        Char(255) institution_name
+        Char(255) institution_country
+        Char(2) status
+        URL link
+        DateTime created_at
+        UUID agreement_id
+        Int transaction_total_days
+        Int access_valid_for_days
+        %% FK to CustomUser(id)
+        %% status choices: CR, GC, UA, RJ, SA, GA, LN, EX (default: CR)
+        %% agreement_id is nullable
+        %% created_at is auto_now_add
     }
 
     %% -------------------------
@@ -95,24 +158,26 @@ erDiagram
     %% CustomUser (1) -- (N) Account
     CUSTOM_USER ||--o{ ACCOUNT : "1 - n"
 
+    %% Account (1) -- (N) AccountAsset
+    ACCOUNT ||--o{ ACCOUNT_ASSET : "1 - n"
+
+    %% Asset (1) -- (N) AccountAsset
+    ASSET ||--o{ ACCOUNT_ASSET : "1 - n"
+
     %% Account (1) -- (N) Transaction
     ACCOUNT ||--o{ TRANSACTION : "1 - n"
 
     %% Asset (1) -- (N) Transaction
     ASSET ||--o{ TRANSACTION : "1 - n"
 
-    %% Account (1) -- (N) Trade
-    ACCOUNT ||--o{ TRADE : "1 - n"
-
-    %% Asset (1) -- (N) Trade (trade_asset)
-    ASSET ||--o{ TRADE : "1 - n (trade_asset)"
-
-    %% Asset (1) -- (N) Trade (counter_asset)
-    ASSET ||--o{ TRADE : "1 - n (counter_asset)"
+    %% Transaction (1) -- (0..1) Transaction (self-reference for trades)
+    TRANSACTION ||--o| TRANSACTION : "paired_transaction"
 
     %% Account (1) -- (N) BalanceHistory
     ACCOUNT ||--o{ BALANCE_HISTORY : "1 - n"
 
     %% Asset (1) -- (N) BalanceHistory
     ASSET ||--o{ BALANCE_HISTORY : "1 - n"
-    
+
+    %% CustomUser (1) -- (N) Requisition
+    CUSTOM_USER ||--o{ REQUISITION : "1 - n"

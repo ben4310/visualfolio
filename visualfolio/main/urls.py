@@ -8,6 +8,23 @@ from .views import (
     TransactionsView,
     RegistrationView,
     LogoutView,
+    BankLinkView,
+    BankCallbackView,
+    SyncAccountView,
+    SyncStatusView,
+    DeleteAccountView,
+    ConfigurationView,
+    AddAccountView,
+    AddManualAccountView,
+    ManageAccountAssetsView,
+    AddAssetBalanceView,
+    CorrectBalanceView,
+    DeleteAssetBalanceView,
+    ManageAccountTransactionsView,
+    AddTransactionView,
+    DeleteTransactionView,
+    AddTradeView,
+    DeleteTradeView,
 )
 
 urlpatterns = [
@@ -18,5 +35,28 @@ urlpatterns = [
     path('assets/', AssetsView.as_view(), name='assets'),
     path('accounts/', AccountsView.as_view(), name='accounts'),
     path('earnings/', EarningsView.as_view(), name='earnings'),
-    path('transactions/', TransactionsView.as_view(), name='transactions')
+    path('transactions/', TransactionsView.as_view(), name='transactions'),
+    path('configuration/', ConfigurationView.as_view(), name='configuration'),
+    path('configuration/add-account/', AddAccountView.as_view(), name='add_account'),
+    path('configuration/add-account/manual/', AddManualAccountView.as_view(), name='add_manual_account'),
+
+    # GoCardless bank connection
+    path('bank/link/', BankLinkView.as_view(), name='bank_link'),
+    path('bank/callback/', BankCallbackView.as_view(), name='bank_callback'),
+    path('bank/sync/<int:account_id>/', SyncAccountView.as_view(), name='sync_account'),
+    path('bank/sync/<int:account_id>/status/', SyncStatusView.as_view(), name='sync_status'),
+    path('bank/account/<int:account_id>/delete/', DeleteAccountView.as_view(), name='delete_account'),
+
+    # Manual account asset and transaction management
+    path('account/<int:account_id>/assets/', ManageAccountAssetsView.as_view(), name='manage_account_assets'),
+    path('account/<int:account_id>/assets/add/', AddAssetBalanceView.as_view(), name='add_asset_balance'),
+    path('account/<int:account_id>/asset/<str:asset_code>/correct/', CorrectBalanceView.as_view(), name='correct_balance'),
+    path('account/<int:account_id>/asset/<str:asset_code>/delete/', DeleteAssetBalanceView.as_view(), name='delete_asset_balance'),
+    path('account/<int:account_id>/asset/<str:asset_code>/transactions/', ManageAccountTransactionsView.as_view(), name='manage_account_transactions'),
+    path('account/<int:account_id>/asset/<str:asset_code>/transactions/add/', AddTransactionView.as_view(), name='add_transaction'),
+    path('transactions/<int:transaction_id>/delete/', DeleteTransactionView.as_view(), name='delete_transaction'),
+    
+    # Trade management
+    path('trades/add/', AddTradeView.as_view(), name='add_trade'),
+    path('trades/<int:trade_id>/delete/', DeleteTradeView.as_view(), name='delete_trade'),
 ]

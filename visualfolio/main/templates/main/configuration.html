@@ -1,0 +1,993 @@
+{% extends "main/base.html" %}
+{% load static %}
+{% block title %}
+    Configuration
+{% endblock title %}
+{% block content %}
+    <h1 class="font-display font-medium text-2xl text-(--first-text-color) mt-4 mb-6">Configuration</h1>
+
+    <!-- Bank Selection Step (inline) -->
+    {% if step == "bank_select" %}
+        {% if not gocardless_enabled %}
+            <div class="bg-(--second-bg-color) border border-(--border-color) rounded-xl p-6 mb-6 text-(--third-text-color)">
+                Bank account syncing is not configured. GoCardless credentials are required.
+            </div>
+        {% else %}
+            <div class="bg-(--second-bg-color) border border-(--border-color) rounded-xl p-6 mb-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="font-medium text-lg text-(--first-text-color)">Select Bank</h2>
+                    <a href="{% url 'configuration' %}" class="text-sm text-(--third-text-color) hover:text-(--first-text-color)">
+                        &larr; Back
+                    </a>
+                </div>
+
+                <!-- Country selection -->
+                <div class="mb-6">
+                    <form method="post" action="{% url 'configuration' %}?step=bank_select" id="country-form">
+                        {% csrf_token %}
+                        <div>
+                            <label for="country_name" class="block text-sm font-medium text-(--third-text-color) mb-3">
+                                Bank Account Country
+                            </label>
+                            <select name="country_name" id="country_name" onchange="this.form.submit()"
+                                    class="bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)">
+                                <option value="">Select country...</option>
+                                {% for _, country_name in countries %}
+                                <option value="{{ country_name }}" {% if selected_country == country_name %}selected{% endif %}>{{ country_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Institution list -->
+                {% if selected_country %}
+                {% if institutions %}
+                <div class="mb-4">
+                    <input type="text" id="bank-search" placeholder="Search by bank or account name..."
+                           class="w-120 bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)">
+                </div>
+                <div class="h-[600px] overflow-y-auto bg-(--first-bg-color) border border-(--border-color) rounded-xl p-3">
+                    <div class="grid grid-cols-2 gap-3" id="banks-grid">
+                        {% for inst in institutions %}
+                        <form method="post" action="{% url 'bank_link' %}" class="bank-item" data-bank-name="{{ inst.name|lower }}">
+                            {% csrf_token %}
+                            <input type="hidden" name="institution_id" value="{{ inst.id }}">
+                            <input type="hidden" name="name" value="{{ inst.name }}">
+                            <input type="hidden" name="country" value="{{ selected_country }}">
+                            <input type="hidden" name="transaction_total_days" value="{{ inst.transaction_total_days }}">
+                            <button type="submit"
+                                    class="w-full flex items-center space-x-4 p-4 rounded-xl border border-(--border-color) bg-(--second-bg-color)
+                                           hover:bg-(--third-bg-color) transition duration-100 text-left cursor-pointer">
+                                {% if inst.logo %}
+                                <img src="{{ inst.logo }}" alt="" class="w-10 h-10 rounded-md flex-shrink-0 object-contain">
+                                {% else %}
+                                <div class="w-10 h-10 rounded-md bg-(--third-bg-color) flex-shrink-0"></div>
+                                {% endif %}
+                                <div class="min-w-0 flex-1">
+                                    <div class="text-sm font-medium text-(--first-text-color) truncate">{{ inst.name }}</div>
+                                    <div class="text-xs text-(--third-text-color) mt-1">{{ inst.transaction_total_days }} days history</div>
+                                </div>
+                            </button>
+                        </form>
+                        {% endfor %}
+                    </div>
+                    <div id="no-match-message" class="hidden text-(--third-text-color) text-sm text-center py-8">
+                        No matching banks found
+                    </div>
+                </div>
+                <script>
+                document.getElementById('bank-search').addEventListener('input', function(e) {
+                    var query = e.target.value.toLowerCase();
+                    var items = document.querySelectorAll('.bank-item');
+                    var visibleCount = 0;
+                    items.forEach(function(item) {
+                        var bankName = item.getAttribute('data-bank-name');
+                        if (!query || bankName.includes(query)) {
+                            item.classList.remove('hidden');
+                            visibleCount++;
+                        } else {
+                            item.classList.add('hidden');
+                        }
+                    });
+                    var noMatchMsg = document.getElementById('no-match-message');
+                    if (visibleCount === 0) {
+                        noMatchMsg.classList.remove('hidden');
+                    } else {
+                        noMatchMsg.classList.add('hidden');
+                    }
+                });
+
+                // Clear search input when country changes
+                document.getElementById('country_name').addEventListener('change', function() {
+                    var searchInput = document.getElementById('bank-search');
+                    if (searchInput) {
+                        searchInput.value = '';
+                    }
+                });
+                </script>
+                {% else %}
+                <div class="text-(--third-text-color) text-sm bg-(--first-bg-color) border border-(--border-color) rounded-xl p-6 text-center">
+                    No banks found for {{ selected_country }}
+                </div>
+                {% endif %}
+                {% endif %}
+            </div>
+        {% endif %}
+    {% else %}
+        <!-- Tab Navigation -->
+        <div class="flex space-x-4 border-b border-(--border-color) mb-6">
+            <a href="?tab=accounts" 
+               class="px-4 py-2 font-medium transition-colors {% if active_tab == 'accounts' %}text-(--first-accent-color) border-b-2 border-(--first-accent-color){% else %}text-(--third-text-color) hover:text-(--first-text-color){% endif %}">
+                Accounts
+            </a>
+            <a href="?tab=transactions" 
+               class="px-4 py-2 font-medium transition-colors {% if active_tab == 'transactions' %}text-(--first-accent-color) border-b-2 border-(--first-accent-color){% else %}text-(--third-text-color) hover:text-(--first-text-color){% endif %}">
+                Transactions
+            </a>
+            <a href="?tab=trades" 
+               class="px-4 py-2 font-medium transition-colors {% if active_tab == 'trades' %}text-(--first-accent-color) border-b-2 border-(--first-accent-color){% else %}text-(--third-text-color) hover:text-(--first-text-color){% endif %}">
+                Trades
+            </a>
+        </div>
+
+        <!-- Accounts Tab -->
+        {% if active_tab == 'accounts' %}
+        <div class="bg-(--second-bg-color) border border-(--border-color) rounded-xl p-6 mb-6">
+            <h2 class="font-medium text-lg text-(--first-text-color) mb-4">Accounts</h2>
+
+        <!-- All Accounts List -->
+        {% if all_accounts %}
+            <div class="space-y-4">
+                {% for account in all_accounts %}
+                    <div class="bg-(--first-bg-color) border border-(--border-color) rounded-lg p-4"
+                         id="sync-row-{{ account.id }}" data-account-id="{{ account.id }}">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-4 flex-shrink-0">
+                                <span class="account-tag inline-block w-3 h-3 rounded-full flex-shrink-0"
+                                      style="--bg-color-light: {{ account.hsl_light_background }};
+                                             --bg-color-dark: {{ account.hsl_dark_background }}"></span>
+                                <div>
+                                    <div class="flex items-center space-x-2">
+                                        <div class="text-md font-medium text-(--first-text-color)">{{ account.name }}</div>
+                                        {% if not account.is_synced %}
+                                        <span class="text-xs ml-3 px-2 py-0.5 rounded-full bg-(--third-bg-color) text-(--third-text-color) font-medium">
+                                            MANUAL
+                                        </span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <!-- Rate limit inline display (only for synced accounts) -->
+                                {% if account.is_synced %}
+                                <span class="text-xs ml-3 px-2 py-0.5 rounded-full bg-(--first-accent-color) text-white font-medium">
+                                    SYNCED
+                                </span>
+                                <div class="flex items-center space-x-3 ml-3">
+                                    <div class="text-sm text-(--third-text-color) whitespace-nowrap">
+                                        {% if account.account_success_limit %}
+                                            {{ account.account_success_remaining }}/<strong>{{ account.account_success_limit }}</strong> fetches
+                                        {% else %}
+                                            0/<strong>-</strong> API calls
+                                        {% endif %}
+                                    </div>
+                                    <div class="w-16 bg-(--third-bg-color) rounded-full h-1.5">
+                                        {% if account.account_success_limit %}
+                                        <div class="rate-limit-bar h-1.5 rounded-full transition-all"
+                                             data-remaining="{{ account.account_success_remaining }}"
+                                             data-limit="{{ account.account_success_limit }}">
+                                        </div>
+                                        {% else %}
+                                        <div class="h-1.5 rounded-full bg-gray-300 dark:bg-gray-700" style="width: 0%"></div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="text-sm text-(--third-text-color) whitespace-nowrap ml-3">
+                                        {% if account.account_success_reset %}
+                                        Resets in: <span class="reset-countdown" data-reset-time="{{ account.account_success_reset.isoformat }}">-</span>
+                                        {% else %}
+                                        Resets in: -
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="flex-1"></div>
+                            <div class="flex items-center space-x-3 flex-shrink-0">
+                                {% if account.is_synced %}
+                                <span class="sync-badge text-xs px-2 py-0.5 rounded-full
+                                    {% if account.sync_status == 'syncing' %}bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200
+                                    {% elif account.sync_status == 'success' or account.sync_status == 'idle' %}bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200
+                                    {% elif account.sync_status == 'error' %}bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200
+                                    {% else %}bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200{% endif %}">
+                                    {% if account.sync_status == 'syncing' %}Syncing...
+                                    {% elif account.sync_status == 'success' %}Synced
+                                    {% elif account.sync_status == 'error' %}Error
+                                    {% else %}{{ account.sync_status|title }}{% endif %}
+                                </span>
+                                <button onclick="triggerSync({{ account.id }})"
+                                        class="sync-btn text-xs text-(--first-text-color) bg-(--second-bg-color) hover:bg-(--third-bg-color) cursor-pointer px-3 py-1.5 rounded border border-(--border-color) transition-colors"
+                                        {% if account.sync_status == 'syncing' %}disabled{% endif %}>
+                                    Sync now
+                                </button>
+                                {% else %}
+                                <a href="{% url 'manage_account_assets' account.id %}"
+                                   class="text-sm text-(--first-text-color) bg-(--second-bg-color) hover:bg-(--third-bg-color) cursor-pointer px-3 py-1.5 rounded border border-(--border-color) transition-colors">
+                                    Add or edit assets
+                                </a>
+                                {% endif %}
+                                <button onclick="deleteAccount({{ account.id }}, '{{ account.name|escapejs }}')"
+                                        class="text-sm text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 cursor-pointer px-3 py-1.5 rounded border border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                                    Delete
+                                </button>
+                            </div>
+                        </div>
+
+                        {% if account.is_synced and account.sync_error %}
+                            {% if 'currencyExchange' in account.sync_error or 'bank chose not to provide' in account.sync_error %}
+                                <!-- Bank's PSD2 Implementation Shortcoming -->
+                                <div class="mt-6 m-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded">
+                                    <div class="flex items-start space-x-2">
+                                        <svg class="w-5 h-5 m-2 mr-5 text-amber-600 dark:text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                                        </svg>
+                                        <div class="flex-1">
+                                            <div class="text-xs font-semibold text-amber-800 dark:text-amber-200 mb-1">
+                                                Missing currency conversion data
+                                            </div>
+                                            <div class="text-xs text-amber-700 dark:text-amber-300">
+                                                This bank returns transactions in foreign currencies without providing currency conversion data. 
+                                                This is a limitation of their PSD2 implementation (including <code class="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">currencyExchange</code> field is optional under PSD2).
+                                            </div>
+                                            <div class="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                                                     Future versions of Visualfolio will feature live and historical market rates, allowing to convert and correctly import transactions even in this scenario.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% else %}
+                                <!-- Regular error -->
+                                <div class="mt-6 m-4 text-xs text-red-500 bg-red-50 dark:bg-red-900/20 p-3 rounded border border-red-200 dark:border-red-800">
+                                    {{ account.sync_error }}
+                                </div>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="text-sm text-(--third-text-color)">
+                No accounts yet. Click "Add Account" to create one.
+            </div>
+        {% endif %}
+            <div class="mt-6">
+                <a href="{% url 'add_account' %}"
+                   class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-(--first-accent-color) hover:bg-(--second-accent-color) transition-colors cursor-pointer">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    Add Account
+                </a>
+            </div>
+
+            {% if not gocardless_enabled %}
+                <div class="text-sm text-amber-600 dark:text-amber-400 mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded">
+                    Bank account syncing is not configured. GoCardless credentials are required for synced accounts.
+                </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Transactions Tab -->
+        {% if active_tab == 'transactions' %}
+        <div class="bg-(--second-bg-color) border border-(--border-color) rounded-xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-2">
+                <div>
+                    <h2 class="font-medium text-lg text-(--first-text-color)">Transactions</h2>
+                </div>
+                <button onclick="showAddTransactionModal()" 
+                        class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-(--first-accent-color) hover:bg-(--second-accent-color) transition-colors cursor-pointer">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    Add Transaction
+                </button>
+            </div>
+
+            <!-- Filters -->
+            <div class="flex gap-3 mb-4">
+                <select id="accountFilter" onchange="applyTransactionFilters()" 
+                        class="bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)">
+                    <option value="">All Accounts</option>
+                    {% for account in user_accounts %}
+                    <option value="{{ account.id }}" {% if selected_account == account.id|stringformat:"s" %}selected{% endif %}>{{ account.name }}</option>
+                    {% endfor %}
+                </select>
+
+                <select id="assetFilter" onchange="applyTransactionFilters()" 
+                        class="bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)">
+                    <option value="">All Assets</option>
+                    {% for asset in fiat_assets %}
+                    <option value="{{ asset.code }}" {% if selected_asset == asset.code %}selected{% endif %}>{{ asset.code }} - {{ asset.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Transactions Table -->
+            {% if transactions %}
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="border-b border-(--border-color)">
+                        <tr class="text-(--third-text-color)">
+                            <th class="text-left py-2 px-3">Date</th>
+                            <th class="text-left py-2 px-3">Account</th>
+                            <th class="text-left py-2 px-3">Asset</th>
+                            <th class="text-left py-2 px-3">From/To</th>
+                            <th class="text-right py-2 px-3">Amount</th>
+                            <th class="text-left py-2 px-3">Category</th>
+                            <th class="text-center py-2 px-3">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for txn in transactions %}
+                        <tr class="border-b border-(--border-color) hover:bg-(--third-bg-color)">
+                            <td class="py-2 px-3 text-(--first-text-color)">{{ txn.datetime|date:"Y-m-d H:i" }}</td>
+                            <td class="py-2 px-3 text-(--first-text-color)">{{ txn.account.name }}</td>
+                            <td class="py-2 px-3 text-(--first-text-color)">{{ txn.asset.code }}</td>
+                            <td class="py-2 px-3 text-(--first-text-color)">{{ txn.entity }}</td>
+                            <td class="py-2 px-3 text-right {% if txn.amount >= 0 %}text-green-600 dark:text-green-400{% else %}text-red-600 dark:text-red-400{% endif %}">
+                                {{ txn.amount|floatformat:2 }}
+                            </td>
+                            <td class="py-2 px-3 text-(--third-text-color)">{{ txn.category|default:"-" }}</td>
+                            <td class="py-2 px-3 text-center">
+                                {% if not txn.account.is_synced %}
+                                <button onclick="deleteTransaction({{ txn.id }})" 
+                                        class="text-sm text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 cursor-pointer px-2 py-1 rounded border border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                                    Delete
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-sm text-(--third-text-color) text-center py-8">
+                No transactions yet. Click "Add Transaction" to create one.
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Add Transaction Modal -->
+        <div id="addTransactionModal" class="hidden fixed inset-0 flex items-center justify-center z-50" style="background-color: rgba(0, 0, 0, 0.15);">
+            <div class="bg-(--second-bg-color) border border-(--border-color) rounded-xl p-6 w-full max-w-md">
+                <h3 class="text-lg font-medium text-(--first-text-color) mb-2">Add Transaction</h3>
+                <form id="addTransactionForm">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label class="block text-sm font-medium text-(--third-text-color) mb-1">Account</label>
+                        <select id="txnAccount" required 
+                                class="w-full bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)">
+                            <option value="">Select account...</option>
+                            {% for account in user_accounts %}
+                            {% if not account.is_synced %}
+                            <option value="{{ account.id }}">{{ account.name }}</option>
+                            {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="block text-sm font-medium text-(--third-text-color) mb-1">Asset</label>
+                        <select id="txnAsset" required 
+                                class="w-full bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)">
+                            <option value="">Select asset...</option>
+                            {% for asset in fiat_assets %}
+                            <option value="{{ asset.code }}">{{ asset.code }} - {{ asset.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="block text-sm font-medium text-(--third-text-color) mb-1">From/To</label>
+                        <input type="text" id="txnEntity" required 
+                               class="w-full bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)" 
+                               placeholder="e.g., Grocery Store">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="block text-sm font-medium text-(--third-text-color) mb-1">Amount</label>
+                        <div class="flex gap-2 items-center">
+                            <input type="number" step="0.01" id="txnAmount" required 
+                                   class="w-32 bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)" 
+                                   placeholder="0.00">
+                            <label class="inline-flex items-center cursor-pointer flex-shrink-0">
+                                <input type="checkbox" id="txnTypeToggle" class="sr-only peer">
+                                <div class="relative w-11 h-6 ml-1 mr-1 bg-red-200 dark:bg-red-900/30 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-200 dark:peer-checked:bg-green-900/30"></div>
+                                <span class="ml-2 text-xs font-medium text-(--third-text-color) whitespace-nowrap" id="txnTypeLabel">Outgoing</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="block text-sm font-medium text-(--third-text-color) mb-1">Date & Time</label>
+                        <input type="datetime-local" id="txnDatetime" required 
+                               class="w-full bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="block text-sm font-medium text-(--third-text-color) mb-1">Category (optional)</label>
+                        <input type="text" id="txnCategory" 
+                               class="w-full bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)" 
+                               placeholder="e.g., Groceries">
+                    </div>
+
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-2">
+                            <label class="inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="txnInfluencesBalance" class="sr-only peer" checked>
+                                <div class="relative w-11 h-6 bg-gray-200 dark:bg-gray-700 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-(--first-accent-color)"></div>
+                            </label>
+                            <span class="text-xs font-medium text-(--third-text-color)">Influences balance</span>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-3">
+                        <button type="button" onclick="hideAddTransactionModal()" 
+                                class="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-(--first-text-color) bg-(--third-bg-color) hover:bg-(--border-color) transition-colors cursor-pointer">
+                            Cancel
+                        </button>
+                        <button type="submit" 
+                                class="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-white bg-(--first-accent-color) hover:bg-(--second-accent-color) transition-colors cursor-pointer">
+                            Add Transaction
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Trades Tab -->
+        {% if active_tab == 'trades' %}
+        <div class="bg-(--second-bg-color) border border-(--border-color) rounded-xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-2">
+                <div>
+                    <h2 class="font-medium text-lg text-(--first-text-color)">Trades</h2>
+                </div>
+                <button onclick="showAddTradeModal()" 
+                        class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-(--first-accent-color) hover:bg-(--second-accent-color) transition-colors cursor-pointer">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    Add Trade
+                </button>
+            </div>
+
+            <!-- Filters -->
+            <div class="flex gap-3 mb-4">
+                <select id="tradeAccountFilter" onchange="applyTradeFilters()" 
+                        class="bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)">
+                    <option value="">All Accounts</option>
+                    {% for account in user_accounts %}
+                    <option value="{{ account.id }}" {% if selected_account == account.id|stringformat:"s" %}selected{% endif %}>{{ account.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Trades Table -->
+            {% if trades %}
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="border-b border-(--border-color)">
+                        <tr class="text-(--third-text-color)">
+                            <th class="text-left py-2 px-3">Date</th>
+                            <th class="text-left py-2 px-3">Account</th>
+                            <th class="text-left py-2 px-3">Sold</th>
+                            <th class="text-left py-2 px-3">Bought</th>
+                            <th class="text-center py-2 px-3">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for trade in trades %}
+                        <tr class="border-b border-(--border-color) hover:bg-(--third-bg-color)">
+                            <td class="py-2 px-3 text-(--first-text-color)">{{ trade.datetime|date:"Y-m-d H:i" }}</td>
+                            <td class="py-2 px-3 text-(--first-text-color)">{{ trade.account.name }}</td>
+                            <td class="py-2 px-3 text-red-600 dark:text-red-400">{{ trade.from_amount|floatformat:2 }} {{ trade.from_asset.code }}</td>
+                            <td class="py-2 px-3 text-green-600 dark:text-green-400">{{ trade.to_amount|floatformat:2 }} {{ trade.to_asset.code }}</td>
+                            <td class="py-2 px-3 text-center">
+                                {% if not trade.account.is_synced %}
+                                <button onclick="deleteTrade({{ trade.id }})" 
+                                        class="text-sm text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 cursor-pointer px-2 py-1 rounded border border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                                    Delete
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-sm text-(--third-text-color) text-center py-8">
+                No trades yet. Click "Add Trade" to create one.
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Add Trade Modal -->
+        <div id="addTradeModal" class="hidden fixed inset-0 flex items-center justify-center z-50" style="background-color: rgba(0, 0, 0, 0.15);">
+            <div class="bg-(--second-bg-color) border border-(--border-color) rounded-xl p-6 w-full max-w-md">
+                <h3 class="text-lg font-medium text-(--first-text-color) mb-2">Add Trade</h3>
+                <p class="text-sm text-(--third-text-color) mb-4">You can edit trades only in manual (non-synced) accounts. Before adding a trade, you need to add the <span class="font-medium">account</span> and <span class="font-medium">assets</span> first.</p>
+</p>
+                <form id="addTradeForm">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label class="block text-sm font-medium text-(--third-text-color) mb-1">Account</label>
+                        <select id="tradeAccount" required 
+                                class="w-full bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)">
+                            <option value="">Select account...</option>
+                            {% for account in user_accounts %}
+                            {% if not account.is_synced %}
+                            <option value="{{ account.id }}">{{ account.name }}</option>
+                            {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="block text-sm font-medium text-(--third-text-color) mb-1">Date & Time</label>
+                        <input type="datetime-local" id="tradeDatetime" required 
+                               class="w-full bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3 mb-3">
+                        <div>
+                            <label class="block text-sm font-medium text-(--third-text-color) mb-1">Asset Bought</label>
+                            <select id="tradeFromAsset" required 
+                                    class="w-full bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)">
+                                <option value="">Select...</option>
+                                {% for asset in all_assets %}
+                                <option value="{{ asset.code }}">{{ asset.code }} - {{ asset.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-(--third-text-color) mb-1">Asset Sold</label>
+                            <select id="tradeToAsset" required 
+                                    class="w-full bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)">
+                                <option value="">Select...</option>
+                                {% for asset in all_assets %}
+                                <option value="{{ asset.code }}">{{ asset.code }} - {{ asset.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <label class="inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="tradeUseMarketRate" class="sr-only peer">
+                                <div class="relative w-11 h-6 bg-gray-200 dark:bg-gray-700 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-(--first-accent-color)"></div>
+                            </label>
+                            <span class="text-xs font-medium text-(--third-text-color)">Use Visualfolio market rate</span>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3 mb-3">
+                        <div>
+                            <label class="block text-sm font-medium text-(--third-text-color) mb-1">Bought Amount</label>
+                            <input type="number" step="0.01" id="tradeFromAmount" 
+                                   class="w-full bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)" 
+                                   placeholder="0.00">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-(--third-text-color) mb-1">Sold Amount</label>
+                            <input type="number" step="0.01" id="tradeToAmount" 
+                                   class="w-full bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)" 
+                                   placeholder="0.00">
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-(--third-text-color) mb-1">Rate (optional)</label>
+                        <input type="number" step="0.0000001" id="tradeRate" 
+                               class="w-full bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)" 
+                               placeholder="Enter rate or amounts">
+                        <p id="tradeInputHint" class="text-xs text-(--third-text-color) mt-1">Provide either two amounts OR one amount with rate (not all three)</p>
+                    </div>
+
+                    <div class="flex gap-3">
+                        <button type="button" onclick="hideAddTradeModal()" 
+                                class="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-(--first-text-color) bg-(--third-bg-color) hover:bg-(--border-color) transition-colors cursor-pointer">
+                            Cancel
+                        </button>
+                        <button type="submit" 
+                                class="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-white bg-(--first-accent-color) hover:bg-(--second-accent-color) transition-colors cursor-pointer">
+                            Add Trade
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    {% endif %}
+
+    <script>
+    function deleteAccount(accountId, accountName) {
+        if (!confirm('Are you sure you want to delete "' + accountName + '"? This will permanently remove all associated transactions and cannot be undone.')) {
+            return;
+        }
+        
+        fetch('/bank/account/' + accountId + '/delete/', {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'}
+        }).then(function(r) {
+            return r.json();
+        }).then(function(data) {
+            // Always reload - Django messages will show success/error
+            location.reload();
+        }).catch(function(err) {
+            // Reload on error too - let Django handle error display
+            location.reload();
+        });
+    }
+
+    function triggerSync(accountId) {
+        var btn = document.querySelector('#sync-row-' + accountId + ' .sync-btn');
+        var badge = document.querySelector('#sync-row-' + accountId + ' .sync-badge');
+        
+        btn.disabled = true;
+        badge.textContent = 'Syncing...';
+        badge.className = 'sync-badge text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+
+        fetch('/bank/sync/' + accountId + '/', {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'}
+        }).then(function() {
+            pollSync(accountId);
+        });
+    }
+
+    function pollSync(accountId) {
+        setTimeout(function() {
+            fetch('/bank/sync/' + accountId + '/status/').then(function(r) {
+                return r.json();
+            }).then(function(data) {
+                var badge = document.querySelector('#sync-row-' + accountId + ' .sync-badge');
+                var btn = document.querySelector('#sync-row-' + accountId + ' .sync-btn');
+                
+                if (data.sync_status === 'syncing') {
+                    pollSync(accountId);
+                } else if (data.sync_status === 'success' || data.sync_status === 'idle') {
+                    badge.textContent = 'Synced';
+                    badge.className = 'sync-badge text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+                    btn.disabled = false;
+                    // Reload page to update rate limits
+                    setTimeout(function() { location.reload(); }, 1000);
+                } else if (data.sync_status === 'error') {
+                    badge.textContent = 'Error';
+                    badge.className = 'sync-badge text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+                    btn.disabled = false;
+                    // Reload page to show error message in UI (no popup)
+                    setTimeout(function() { location.reload(); }, 500);
+                }
+            });
+        }, 2000);
+    }
+
+    // Auto-poll for any accounts currently syncing on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        {% for account in all_accounts %}
+        {% if account.is_synced and account.sync_status == 'syncing' %}
+        pollSync({{ account.id }});
+        {% endif %}
+        {% endfor %}
+
+        // Update countdown timers
+        function updateCountdowns() {
+            document.querySelectorAll('.reset-countdown').forEach(function(el) {
+                var resetTime = new Date(el.getAttribute('data-reset-time'));
+                var now = new Date();
+                var diff = Math.floor((resetTime - now) / 1000);
+                
+                if (diff <= 0) {
+                    el.textContent = 'now (refresh page)';
+                } else {
+                    var hours = Math.floor(diff / 3600);
+                    var minutes = Math.floor((diff % 3600) / 60);
+                    var seconds = diff % 60;
+                    
+                    if (hours > 0) {
+                        el.textContent = hours + 'h ' + minutes + 'm';
+                    } else if (minutes > 0) {
+                        el.textContent = minutes + 'm ' + seconds + 's';
+                    } else {
+                        el.textContent = seconds + 's';
+                    }
+                }
+            });
+        }
+        
+        updateCountdowns();
+        setInterval(updateCountdowns, 1000);
+
+        // Set up rate limit progress bars
+        document.querySelectorAll('.rate-limit-bar').forEach(function(bar) {
+            var remaining = parseInt(bar.getAttribute('data-remaining') || '0');
+            var limit = parseInt(bar.getAttribute('data-limit') || '1');
+            var percentage = Math.round((remaining / limit) * 100);
+            
+            bar.style.width = percentage + '%';
+            
+            if (percentage > 50) {
+                bar.classList.add('bg-green-500');
+            } else if (percentage > 20) {
+                bar.classList.add('bg-yellow-500');
+            } else {
+                bar.classList.add('bg-red-500');
+            }
+        });
+    });
+
+    // Transaction management functions
+    function applyTransactionFilters() {
+        var accountEl = document.getElementById('accountFilter');
+        var assetEl = document.getElementById('assetFilter');
+        var account = accountEl ? accountEl.value : '';
+        var asset = assetEl ? assetEl.value : '';
+        var url = '?tab=transactions';
+        if (account) url += '&account=' + account;
+        if (asset) url += '&asset=' + asset;
+        window.location.href = url;
+    }
+
+    function showAddTransactionModal() {
+        document.getElementById('addTransactionModal').classList.remove('hidden');
+    }
+
+    function hideAddTransactionModal() {
+        document.getElementById('addTransactionModal').classList.add('hidden');
+    }
+
+    var addTxnForm = document.getElementById('addTransactionForm');
+    if (addTxnForm) addTxnForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        var accountId = document.getElementById('txnAccount').value;
+        var assetCode = document.getElementById('txnAsset').value;
+        var entity = document.getElementById('txnEntity').value;
+        var amountValue = document.getElementById('txnAmount').value;
+        var datetime = document.getElementById('txnDatetime').value;
+        var category = document.getElementById('txnCategory').value;
+        var influencesBalance = document.getElementById('txnInfluencesBalance').checked ? '1' : '0';
+        var isIncoming = document.getElementById('txnTypeToggle').checked;
+
+        if (!accountId || !assetCode || !entity || !amountValue || !datetime) {
+            showToast('Please fill all required fields', 'error');
+            return;
+        }
+
+        var parsed = parseFloat(amountValue);
+        if (isNaN(parsed) || parsed === 0) {
+            showToast('Amount must be a valid non-zero number', 'error');
+            return;
+        }
+        var amount = isIncoming ? Math.abs(parsed) : -Math.abs(parsed);
+
+        var formData = new FormData();
+        formData.append('entity', entity);
+        formData.append('amount', amount);
+        formData.append('datetime', datetime);
+        formData.append('category', category);
+        formData.append('influences_balance', influencesBalance);
+
+        fetch('/account/' + accountId + '/asset/' + assetCode + '/transactions/add/', {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'},
+            body: formData
+        }).then(function(r) {
+            return r.json();
+        }).then(function(data) {
+            if (data.success) {
+                location.reload();
+            } else {
+                showToast(data.error || 'Failed to add transaction', 'error');
+            }
+        }).catch(function(err) {
+            showToast('An error occurred', 'error');
+        });
+    });
+
+    var txnTypeToggle = document.getElementById('txnTypeToggle');
+    if (txnTypeToggle) txnTypeToggle.addEventListener('change', function() {
+        var label = document.getElementById('txnTypeLabel');
+        if (label) label.textContent = this.checked ? 'Incoming' : 'Outgoing';
+    });
+
+    function deleteTransaction(txnId) {
+        if (!confirm('Are you sure you want to delete this transaction?')) {
+            return;
+        }
+
+        fetch('/transactions/' + txnId + '/delete/', {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'}
+        }).then(function(r) {
+            return r.json();
+        }).then(function(data) {
+            if (data.success) {
+                location.reload();
+            } else {
+                showToast(data.error || 'Failed to delete transaction', 'error');
+            }
+        }).catch(function(err) {
+            showToast('An error occurred', 'error');
+        });
+    }
+
+    // Trade management functions
+    function applyTradeFilters() {
+        var account = document.getElementById('tradeAccountFilter').value;
+        var url = '?tab=trades';
+        if (account) url += '&account=' + account;
+        window.location.href = url;
+    }
+
+    function showAddTradeModal() {
+        document.getElementById('addTradeModal').classList.remove('hidden');
+        var form = document.getElementById('addTradeForm');
+        if (form) form.reset();
+        var toggle = document.getElementById('tradeUseMarketRate');
+        if (toggle) toggle.checked = false;
+        updateTradeMarketRateUI();
+    }
+
+    function hideAddTradeModal() {
+        document.getElementById('addTradeModal').classList.add('hidden');
+    }
+
+    function updateTradeMarketRateUI() {
+        var useMarketRate = document.getElementById('tradeUseMarketRate').checked;
+        var rateInput = document.getElementById('tradeRate');
+        var hint = document.getElementById('tradeInputHint');
+        if (!rateInput || !hint) return;
+
+        if (useMarketRate) {
+            rateInput.value = '';
+            rateInput.disabled = true;
+            rateInput.classList.add('opacity-60');
+            hint.textContent = 'Market mode: enter exactly one side amount. The other side is computed at submit time using app market rates.';
+        } else {
+            rateInput.disabled = false;
+            rateInput.classList.remove('opacity-60');
+            hint.textContent = 'Provide either two amounts OR one amount with rate (not all three)';
+        }
+    }
+
+    var tradeUseMarketRateToggle = document.getElementById('tradeUseMarketRate');
+    if (tradeUseMarketRateToggle) tradeUseMarketRateToggle.addEventListener('change', updateTradeMarketRateUI);
+
+    var addTradeForm = document.getElementById('addTradeForm');
+    if (addTradeForm) addTradeForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        var accountId = document.getElementById('tradeAccount').value;
+        var datetime = document.getElementById('tradeDatetime').value;
+        var fromAsset = document.getElementById('tradeFromAsset').value;
+        var toAsset = document.getElementById('tradeToAsset').value;
+        var fromAmount = document.getElementById('tradeFromAmount').value;
+        var toAmount = document.getElementById('tradeToAmount').value;
+        var rate = document.getElementById('tradeRate').value;
+        var useMarketRate = document.getElementById('tradeUseMarketRate').checked;
+
+        if (!accountId || !datetime || !fromAsset || !toAsset) {
+            showToast('Please fill all required fields', 'error');
+            return;
+        }
+
+        if (fromAsset === toAsset) {
+            showToast('From and To assets must be different', 'error');
+            return;
+        }
+
+        if (useMarketRate) {
+            var filledAmounts = [fromAmount, toAmount].filter(function(v) { return v && v !== ''; }).length;
+            if (filledAmounts !== 1) {
+                showToast('Market mode requires exactly one amount side', 'error');
+                return;
+            }
+            if (rate && rate !== '') {
+                showToast('Rate must be empty when market mode is enabled', 'error');
+                return;
+            }
+        } else {
+            var filledCount = [fromAmount, toAmount, rate].filter(function(v) { return v && v !== ''; }).length;
+            
+            if (filledCount < 2) {
+                showToast('Provide either two amounts OR one amount with rate', 'error');
+                return;
+            }
+            
+            if (filledCount === 3) {
+                showToast('Do not provide all three values (two amounts + rate)', 'error');
+                return;
+            }
+        }
+
+        var formData = new FormData();
+        formData.append('account_id', accountId);
+        formData.append('datetime', datetime);
+        formData.append('from_asset', fromAsset);
+        formData.append('to_asset', toAsset);
+        formData.append('use_market_rate', useMarketRate ? '1' : '0');
+        if (fromAmount) formData.append('from_amount', fromAmount);
+        if (toAmount) formData.append('to_amount', toAmount);
+        if (rate) formData.append('rate', rate);
+
+        fetch('/trades/add/', {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'},
+            body: formData
+        }).then(function(r) {
+            return r.json();
+        }).then(function(data) {
+            if (data.success) {
+                location.reload();
+            } else {
+                showToast(data.error || 'Failed to add trade', 'error');
+            }
+        }).catch(function(err) {
+            showToast('An error occurred', 'error');
+        });
+    });
+
+    if (tradeUseMarketRateToggle) {
+        updateTradeMarketRateUI();
+    }
+
+    function deleteTrade(tradeId) {
+        if (!confirm('Are you sure you want to delete this trade? Both sides will be removed.')) {
+            return;
+        }
+
+        fetch('/trades/' + tradeId + '/delete/', {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'}
+        }).then(function(r) {
+            return r.json();
+        }).then(function(data) {
+            if (data.success) {
+                location.reload();
+            } else {
+                showToast(data.error || 'Failed to delete trade', 'error');
+            }
+        }).catch(function(err) {
+            showToast('An error occurred', 'error');
+        });
+    }
+
+    // ESC key to close modals
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            var txnModal = document.getElementById('addTransactionModal');
+            if (txnModal && !txnModal.classList.contains('hidden')) {
+                hideAddTransactionModal();
+            }
+            var tradeModal = document.getElementById('addTradeModal');
+            if (tradeModal && !tradeModal.classList.contains('hidden')) {
+                hideAddTradeModal();
+            }
+        }
+    });
+    </script>
+    <style>
+        .account-tag {
+            background-color: var(--bg-color-light);
+        }
+        .dark .account-tag {
+            background-color: var(--bg-color-dark);
+        }
+    </style>
+{% endblock content %}

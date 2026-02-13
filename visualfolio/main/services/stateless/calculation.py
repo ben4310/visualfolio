@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 
 
 class BalanceCalculationService:
-    def generate_balance_history(self, transactions, current_balance, start_date, end_date):
+    def generate_balance_history_backward(self, transactions, current_balance, start_date, end_date):
         transactions_by_date = {}
         for txn in transactions:
             transaction_date = txn.datetime.date()
