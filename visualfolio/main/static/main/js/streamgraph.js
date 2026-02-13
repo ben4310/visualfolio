@@ -2,7 +2,6 @@
   "use strict";
 
   var MARGIN = { top: 25, right: 25, bottom: 95, left: 25 };
-  var TOOLTIP_CLS = "sg-tooltip";
 
   /* ── helpers ────────────────────────────────────────────── */
 
@@ -11,6 +10,110 @@
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
+  }
+
+  function updateValueDisplays(totalValue, baseCurrency) {
+    var totalEl = document.getElementById("total-asset-value");
+    
+    if (totalEl) {
+      totalEl.textContent = fmtValue(totalValue) + " " + baseCurrency;
+    }
+  }
+
+  function resetValueDisplays(baseCurrency) {
+    var totalEl = document.getElementById("total-asset-value");
+    
+    if (totalEl && totalEl.dataset.default) {
+      totalEl.textContent = totalEl.dataset.default + " " + baseCurrency;
+    }
+  }
+
+  function displayDailyDetails(dateStr, transactions, trades, baseCurrency) {
+    var transactionsEl = document.getElementById("transactions-list");
+    var tradesEl = document.getElementById("trades-list");
+    if (!transactionsEl || !tradesEl) return;
+
+    var MAX_ITEMS = 6;
+
+    // Build transactions list
+    var transactionsHtml = "";
+    if (transactions && transactions.length > 0) {
+      // Sort transactions by descending absolute value and limit to 6
+      var sortedTransactions = transactions.slice().sort(function(a, b) {
+        return Math.abs(b.value) - Math.abs(a.value);
+      }).slice(0, MAX_ITEMS);
+      
+      transactionsHtml = "<div class='space-y-3'>";
+      sortedTransactions.forEach(function(txn) {
+        transactionsHtml += 
+          "<div class='flex justify-between items-start gap-4'>" +
+          "<div class='flex-1 min-w-0'>" +
+          "<div class='font-medium text-(--first-text-color) truncate'>" + txn.entity + "</div>" +
+          (txn.category ? "<div class='text-xs text-(--third-text-color)'>" + txn.category + "</div>" : "") +
+          "</div>" +
+          "<div class='text-right flex-shrink-0'>" +
+          "<div class='" + (txn.amount > 0 ? "text-green-600" : "text-red-600") + " font-medium'>" +
+          (txn.amount > 0 ? "+" : "") + fmtValue(txn.amount) + " " + txn.asset +
+          "</div>" +
+          "<div class='text-xs text-(--third-text-color)'>" +
+          (txn.value > 0 ? "+" : "") + fmtValue(txn.value) + " " + baseCurrency +
+          "</div>" +
+          "</div>" +
+          "</div>";
+      });
+      transactionsHtml += "</div>";
+    } else {
+      transactionsHtml = "<div class='text-(--third-text-color) text-2xl'>—</div>";
+    }
+    
+    // Build trades list
+    var tradesHtml = "";
+    if (trades && trades.length > 0) {
+      // Sort trades by descending average value and limit to 6
+      var sortedTrades = trades.slice().sort(function(a, b) {
+        var avgA = (a.from_value + a.to_value) / 2;
+        var avgB = (b.from_value + b.to_value) / 2;
+        return avgB - avgA;
+      }).slice(0, MAX_ITEMS);
+      
+      tradesHtml = "<div class='space-y-3'>";
+      sortedTrades.forEach(function(trade) {
+        tradesHtml += 
+          "<div class='flex justify-between items-start gap-4'>" +
+          "<div class='flex-1 min-w-0'>" +
+          "<div class='text-(--first-text-color) font-medium'>" +
+          fmtValue(trade.from_amount) + " " + trade.from_asset + " → " +
+          fmtValue(trade.to_amount) + " " + trade.to_asset +
+          "</div>" +
+          "</div>" +
+          "<div class='text-right flex-shrink-0'>" +
+          "<div class='text-xs text-(--third-text-color)'>" +
+          "~" + fmtValue((trade.from_value + trade.to_value) / 2) + " " + baseCurrency +
+          "</div>" +
+          "</div>" +
+          "</div>";
+      });
+      tradesHtml += "</div>";
+    } else {
+      tradesHtml = "<div class='text-(--third-text-color) text-2xl'>—</div>";
+    }
+    
+    transactionsEl.innerHTML = transactionsHtml;
+    tradesEl.innerHTML = tradesHtml;
+  }
+
+  function clearDailyDetails() {
+    var transactionsEl = document.getElementById("transactions-list");
+    var tradesEl = document.getElementById("trades-list");
+    
+    var placeholderText = "<span class='text-(--third-text-color) italic'>Hover over the chart to display daily data</span>";
+    
+    if (transactionsEl) {
+      transactionsEl.innerHTML = placeholderText;
+    }
+    if (tradesEl) {
+      tradesEl.innerHTML = placeholderText;
+    }
   }
 
   /**
@@ -42,7 +145,6 @@
     if (!el || !data.dates || data.dates.length === 0) return;
 
     // Teardown
-    d3.selectAll("." + TOOLTIP_CLS).remove();
     el.innerHTML = "";
 
     // Use container size minus 1px buffer to prevent overflow scrollbars
@@ -57,8 +159,27 @@
     var mainColor = isDark ? "rgb(255,255,255)" : "#6b6b6b";
 
     var dates = data.dates.map(function (d) { return new Date(d + "T00:00:00"); });
+    
+    // Add one extra day to ensure the last data point is visually represented with curveStepAfter
+    var lastDate = dates[dates.length - 1];
+    var extraDate = new Date(lastDate);
+    extraDate.setDate(extraDate.getDate() + 1);
+    dates.push(extraDate);
+    
     var n = dates.length;
-    var layers = data.layers;
+    
+    // Create extended layers for rendering (without mutating original data)
+    var layers = data.layers.map(function(layer) {
+      return {
+        name: layer.name,
+        color: layer.color,
+        upper: layer.upper.concat([layer.upper[layer.upper.length - 1]]),
+        lower: layer.lower.concat([layer.lower[layer.lower.length - 1]])
+      };
+    });
+    
+    // Create extended values array for hover (without mutating original data)
+    var values = data.values.concat([data.values[data.values.length - 1]]);
 
     // Scales
     var x = d3.scaleTime().domain(d3.extent(dates)).range([0, iW]);
@@ -104,25 +225,19 @@
     });
 
     /* ── stacked areas ── */
+    var area = d3
+      .area()
+      .x(function (d) { return x(d.date); })
+      .y0(function (d) { return y(d.lower); })
+      .y1(function (d) { return y(d.upper); })
+      .curve(d3.curveStepAfter);
+
     layers.forEach(function (layer, i) {
       var pts = dates.map(function (date, j) {
         return { date: date, upper: layer.upper[j], lower: layer.lower[j] };
       });
 
-      var pathD;
-      if (i === 0) {
-        // First layer: step-after upper edge (transactions), linear lower edge
-        pathD = compositeArea(pts, x, y, d3.curveStepAfter, d3.curveLinear);
-      } else {
-        pathD = d3
-          .area()
-          .x(function (d) { return x(d.date); })
-          .y0(function (d) { return y(d.lower); })
-          .y1(function (d) { return y(d.upper); })
-          .curve(d3.curveLinear)(pts);
-      }
-
-      clipped.append("path").attr("d", pathD).attr("fill", layer.color);
+      clipped.append("path").attr("d", area(pts)).attr("fill", layer.color);
     });
 
     /* ── ruler ("I" indicator) ── */
@@ -184,7 +299,7 @@
       .attr("stroke", "var(--border-color)")
       .attr("shape-rendering", "crispEdges");
 
-    /* ── hover crosshair + tooltip ── */
+    /* ── hover crosshair ── */
     var hoverLine = g
       .append("line")
       .attr("y1", 0)
@@ -194,23 +309,6 @@
       .attr("stroke-dasharray", "4 3")
       .attr("pointer-events", "none")
       .style("display", "none");
-
-    var tip = d3
-      .select("body")
-      .append("div")
-      .attr("class", TOOLTIP_CLS)
-      .style("position", "fixed")
-      .style("display", "none")
-      .style("background", "var(--second-bg-color)")
-      .style("border", "1px solid var(--border-color)")
-      .style("border-radius", "8px")
-      .style("padding", "6px 10px")
-      .style("font-size", "12px")
-      .style("color", mainColor)
-      .style("pointer-events", "none")
-      .style("white-space", "nowrap")
-      .style("z-index", "9999")
-      .style("box-shadow", "0 2px 6px rgba(0,0,0,.08)");
 
     var bisect = d3.bisector(function (d) { return d; }).left;
 
@@ -239,28 +337,20 @@
           day: "numeric",
         });
 
-        tip
-          .html(
-            dateStr + "<br>" +
-            "Total asset value: " +
-              fmtValue(data.values[idx]) +
-              " " +
-              data.baseCurrency
-          )
-          .style("display", "block");
-
-        var tipW = tip.node().offsetWidth;
-        var left = event.clientX + 14;
-        if (left + tipW > window.innerWidth - 12) {
-          left = event.clientX - tipW - 14;
-        }
-        tip
-          .style("left", left + "px")
-          .style("top", event.clientY - 30 + "px");
+        // Cap the data index to the original data length (before we added the extra day)
+        var dataIdx = Math.min(idx, data.dates.length - 1);
+        var dateKey = data.dates[dataIdx];
+        var totalValue = values[idx];
+        
+        updateValueDisplays(totalValue, data.baseCurrency);
+        
+        var dayData = data.transactionsByDate[dateKey] || { transactions: [], trades: [] };
+        displayDailyDetails(dateStr, dayData.transactions, dayData.trades, data.baseCurrency);
       })
       .on("pointerleave", function () {
         hoverLine.style("display", "none");
-        tip.style("display", "none");
+        resetValueDisplays(data.baseCurrency);
+        clearDailyDetails();
       });
 
     /* ── legend ── */
