@@ -34,8 +34,28 @@ class Asset(models.Model):
 '''
 
 class CustomUser(AbstractUser):
+    SYNC_FREQUENCY_CHOICES = [
+        ("manual", "Manual only"),
+        ("6h", "Every 6 hours"),
+        ("12h", "Every 12 hours"),
+        ("24h", "Every 24 hours"),
+    ]
+    
     last_update = models.DateTimeField(null=True, blank=True)
     last_full_refresh = models.DateTimeField(null=True, blank=True)
+    
+    # Scheduled sync settings
+    sync_frequency = models.CharField(
+        max_length=10, 
+        choices=SYNC_FREQUENCY_CHOICES, 
+        default="24h"
+    )
+    sync_preferred_hour = models.PositiveSmallIntegerField(
+        default=5,
+        validators=[MinValueValidator(0)],
+        help_text="Preferred hour of day (0-23) for automatic sync"
+    )
+    last_auto_sync = models.DateTimeField(null=True, blank=True)
 
 
 class Account(models.Model):

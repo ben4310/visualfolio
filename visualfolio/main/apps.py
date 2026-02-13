@@ -21,3 +21,9 @@ class MainConfig(AppConfig):
     def ready(self):
         # Connect the post_migrate signal to load static data
         post_migrate.connect(load_static_data, sender=self)
+        
+        # Start the scheduler (with multi-worker safety)
+        import sys
+        if 'runserver' in sys.argv or 'gunicorn' in sys.argv[0]:
+            from main.scheduler import start_scheduler
+            start_scheduler()
