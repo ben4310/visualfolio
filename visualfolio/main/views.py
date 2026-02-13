@@ -126,6 +126,9 @@ class RegistrationView(View):
 
 class LogoutView(View):
     def get(self, request, *args, **kwargs):
+        # Drain all pending messages so they don't leak to the login page
+        storage = messages.get_messages(request)
+        list(storage)
         logout(request)
         return redirect("login")
 
@@ -150,7 +153,6 @@ class OverviewView(LoginRequiredMixin, TemplateView):
         if not has_enough_data:
             context["has_enough_data"] = False
             context["total_asset_value"] = 0
-            context["liquid_asset_value"] = 0
             context["base_currency"] = settings.BASE_CURRENCY["symbol"]
             context["graph_data"] = "{}"
             return context
@@ -159,7 +161,7 @@ class OverviewView(LoginRequiredMixin, TemplateView):
         latest_balances = (
             BalanceHistory.get_latest_valid_balances(self.request.user)
             .select_related("asset__asset_class")
-            .values("account", "asset", "balance", "asset__is_liquid")
+            .values("account", "asset", "balance")
         )
         balances_df = pd.DataFrame(list(latest_balances))
 
@@ -178,9 +180,6 @@ class OverviewView(LoginRequiredMixin, TemplateView):
 
         # Calculate totals
         total_asset_value = balances_df["current_value"].sum()
-        liquid_asset_value = balances_df[balances_df["asset__is_liquid"]][
-            "current_value"
-        ].sum()
 
         # Get users BalanceHistories
         balance_histories = BalanceHistory.get_valid_range_records(
@@ -497,7 +496,6 @@ class OverviewView(LoginRequiredMixin, TemplateView):
 
         context["graph_data"] = graph_data
         context["total_asset_value"] = total_asset_value
-        context["liquid_asset_value"] = liquid_asset_value
         context["base_currency"] = settings.BASE_CURRENCY["symbol"]
         context["has_enough_data"] = True
 
