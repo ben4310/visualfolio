@@ -5,6 +5,16 @@ from django.core.exceptions import ValidationError
 
 class BalanceCalculationService:
     def generate_balance_history_backward(self, transactions, current_balance, start_date, end_date):
+        """Backward calculation from a known current balance.
+
+        Walks backward from end_date to start_date, subtracting each day's
+        transactions to derive earlier balances. Raises ValidationError if
+        any intermediate balance goes negative.
+
+        Used by:
+        - GoCardless sync (known current balance, derive historical balances)
+        - Retroactive transaction mode (preserve current balance, recalculate history)
+        """
         transactions_by_date = {}
         for txn in transactions:
             transaction_date = txn.datetime.date()
