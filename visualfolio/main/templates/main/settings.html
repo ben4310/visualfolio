@@ -120,5 +120,142 @@
                 </button>
             </div>
         </form>
+
+        <hr class="border-(--border-color) my-8">
+
+        <!-- Account Section -->
+        <div class="mb-8">
+            <h2 class="font-medium text-lg text-(--first-text-color) mb-3">Account</h2>
+            
+            <div class="space-y-4">
+                <div>
+                    <p class="text-sm text-(--third-text-color) mb-4">
+                        Delete your account and all associated data. This action is permanent and cannot be undone.
+                    </p>
+                </div>
+                
+                <div>
+                    <button type="button" onclick="openDeleteAccountModal()"
+                            class="text-sm text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 cursor-pointer px-3 py-1.5 rounded border border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                        Delete Account
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
+
+    <!-- First Confirmation Modal: Confirm Deletion -->
+    <div id="deleteAccountModal" class="hidden fixed inset-0 flex items-center justify-center z-50" style="background-color: rgba(0, 0, 0, 0.15);">
+        <div class="bg-(--second-bg-color) border border-(--border-color) rounded-xl p-6 w-full max-w-md">
+            <h3 class="text-lg font-medium text-(--first-text-color) mb-2">Delete Account?</h3>
+            <p class="text-sm text-(--third-text-color) mb-4">
+                This will permanently delete your Visualfolio account and all associated data, including:
+            </p>
+            <ul class="text-sm text-(--third-text-color) mb-4 list-disc list-inside space-y-1">
+                <li>All linked bank accounts</li>
+                <li>All manual accounts</li>
+                <li>All transactions and balance history</li>
+                <li>All trades and asset data</li>
+                <li>All settings and preferences</li>
+            </ul>
+            <p class="text-sm text-red-600 dark:text-red-400 font-medium mb-6">
+                This action cannot be undone.
+            </p>
+            <div class="flex gap-3 justify-end">
+                <button type="button" onclick="closeDeleteAccountModal()"
+                        class="px-4 py-2 bg-(--third-bg-color) text-(--first-text-color) rounded-lg text-sm font-medium hover:bg-(--second-bg-color) transition-colors">
+                    Cancel
+                </button>
+                <button type="button" onclick="openDeleteAccountConfirmModal()"
+                        class="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors">
+                    Continue
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Second Confirmation Modal: Confirm Username -->
+    <div id="deleteAccountConfirmModal" class="hidden fixed inset-0 flex items-center justify-center z-50" style="background-color: rgba(0, 0, 0, 0.15);">
+        <div class="bg-(--second-bg-color) border border-(--border-color) rounded-xl p-6 w-full max-w-md">
+            <h3 class="text-lg font-medium text-(--first-text-color) mb-2">Confirm Deletion</h3>
+            <p class="text-sm text-(--third-text-color) mb-4">
+                To confirm account deletion, please enter your username:
+            </p>
+            <input type="text" id="usernameConfirmInput" placeholder="Enter your username"
+                   class="w-full bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color) mb-4">
+            <p class="text-xs text-(--third-text-color) mb-4">
+                Your username is: <span class="font-medium text-(--first-text-color)">{{ user.username }}</span>
+            </p>
+            <div class="flex gap-3 justify-end">
+                <button type="button" onclick="closeDeleteAccountConfirmModal()"
+                        class="px-4 py-2 bg-(--third-bg-color) text-(--first-text-color) rounded-lg text-sm font-medium hover:bg-(--second-bg-color) transition-colors">
+                    Cancel
+                </button>
+                <button type="button" onclick="confirmDeleteAccount('{{ user.username }}')"
+                        class="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors">
+                    Delete Account
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    function openDeleteAccountModal() {
+        document.getElementById('deleteAccountModal').classList.remove('hidden');
+    }
+
+    function closeDeleteAccountModal() {
+        document.getElementById('deleteAccountModal').classList.add('hidden');
+    }
+
+    function openDeleteAccountConfirmModal() {
+        document.getElementById('deleteAccountModal').classList.add('hidden');
+        document.getElementById('deleteAccountConfirmModal').classList.remove('hidden');
+        document.getElementById('usernameConfirmInput').focus();
+    }
+
+    function closeDeleteAccountConfirmModal() {
+        document.getElementById('deleteAccountConfirmModal').classList.add('hidden');
+        document.getElementById('usernameConfirmInput').value = '';
+    }
+
+    function confirmDeleteAccount(expectedUsername) {
+        const inputUsername = document.getElementById('usernameConfirmInput').value.trim();
+        
+        if (inputUsername !== expectedUsername) {
+            alert('Username does not match. Please try again.');
+            return;
+        }
+        
+        fetch('/delete-account/', {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'}
+        }).then(function(r) {
+            return r.json();
+        }).then(function(data) {
+            if (data.success) {
+                window.location.href = '/login/';
+            } else {
+                alert('Error deleting account. Please try again.');
+                closeDeleteAccountConfirmModal();
+            }
+        }).catch(function(err) {
+            alert('Error deleting account. Please try again.');
+            closeDeleteAccountConfirmModal();
+        });
+    }
+
+    // Close modals when clicking outside
+    document.getElementById('deleteAccountModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeDeleteAccountModal();
+        }
+    });
+
+    document.getElementById('deleteAccountConfirmModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeDeleteAccountConfirmModal();
+        }
+    });
+    </script>
 {% endblock content %}

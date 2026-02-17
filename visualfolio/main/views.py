@@ -2131,6 +2131,18 @@ class SettingsView(LoginRequiredMixin, View):
         user.save()
         messages.success(request, "Settings saved successfully")
         return redirect("settings")
+
+
 class DeleteUserAccountView(LoginRequiredMixin, View):
     """Delete the current user and all associated data."""
     login_url = "login"
+
+    def post(self, request, *args, **kwargs):
+        user = request.user
+        username = user.username
+        
+        # Delete the user (CASCADE will delete all related data)
+        user.delete()
+        
+        messages.success(request, "Your account and all associated data have been deleted.")
+        return JsonResponse({"success": True})
