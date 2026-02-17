@@ -615,6 +615,26 @@
     {% endif %}
 
     <script>
+    /**
+     * Append the browser's UTC offset to a datetime-local string so the server
+     * receives an unambiguous, timezone-aware ISO 8601 value (e.g. "2026-02-17T22:37+01:00").
+     * The datetime-local input always operates in the browser's local time; encoding the
+     * offset here ensures the back-end stores the correct UTC instant regardless of the
+     * user's configured app timezone.
+     */
+    function withBrowserTzOffset(datetimeLocalValue) {
+        var d = new Date(datetimeLocalValue);
+        var offsetMin = -d.getTimezoneOffset(); // getTimezoneOffset() returns UTC-local, so negate
+        var sign = offsetMin >= 0 ? '+' : '-';
+        var abs = Math.abs(offsetMin);
+        var hh = String(Math.floor(abs / 60)).padStart(2, '0');
+        var mm = String(abs % 60).padStart(2, '0');
+        return datetimeLocalValue + sign + hh + ':' + mm;
+    }
+
+    var pendingDeleteAccountId = null;
+    var pendingDeleteAccountName = null;
+
     function deleteAccount(accountId, accountName) {
         if (!confirm('Are you sure you want to delete "' + accountName + '"? This will permanently remove all associated transactions and cannot be undone.')) {
             return;
@@ -779,7 +799,7 @@
         var formData = new FormData();
         formData.append('entity', entity);
         formData.append('amount', amount);
-        formData.append('datetime', datetime);
+        formData.append('datetime', withBrowserTzOffset(datetime));
         formData.append('category', category);
         formData.append('influences_balance', influencesBalance);
 
@@ -918,7 +938,7 @@
 
         var formData = new FormData();
         formData.append('account_id', accountId);
-        formData.append('datetime', datetime);
+        formData.append('datetime', withBrowserTzOffset(datetime));
         formData.append('from_asset', fromAsset);
         formData.append('to_asset', toAsset);
         formData.append('use_market_rate', useMarketRate ? '1' : '0');

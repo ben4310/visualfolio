@@ -5,6 +5,7 @@ This command is run hourly by APScheduler. It checks each user's sync settings
 and triggers syncs for users whose sync schedule has been reached.
 """
 import logging
+import zoneinfo
 from datetime import datetime, timedelta, timezone
 from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
@@ -18,16 +19,24 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
+def _user_local_hour(user, utc_now: datetime) -> int:
+    """Return the current hour in the user's configured timezone."""
+    try:
+        user_tz = zoneinfo.ZoneInfo(user.user_timezone)
+    except (KeyError, zoneinfo.ZoneInfoNotFoundError):
+        user_tz = zoneinfo.ZoneInfo("UTC")
+    return utc_now.astimezone(user_tz).hour
+
+
 class Command(BaseCommand):
     help = 'Check and sync accounts for users based on their sync settings'
 
     def handle(self, *args, **options):
         start_time = datetime.now(timezone.utc)
-        current_hour = start_time.hour
         
-        logger.info("Running scheduled sync check at %s (hour %d)", start_time, current_hour)
+        logger.info("Running scheduled sync check at %s (UTC)", start_time)
         
-        users_to_sync = self.get_users_to_sync(current_hour, start_time)
+        users_to_sync = self.get_users_to_sync(start_time)
         
         if not users_to_sync:
             logger.info("No users need syncing at this time")
@@ -44,7 +53,7 @@ class Command(BaseCommand):
                     user.username, exc
                 )
     
-    def get_users_to_sync(self, current_hour, now):
+    def get_users_to_sync(self, now):
         """
         Get users who need syncing based on their settings.
         
@@ -52,10 +61,14 @@ class Command(BaseCommand):
         - sync_frequency is not 'manual'
         - If never synced or last sync was yesterday/earlier: only sync at preferred hour (first sync of day)
         - If last sync was today: sync if enough time has passed (subsequent syncs)
+        
+        The preferred hour is compared against the user's local timezone.
         """
         users_to_sync = []
         
         for user in User.objects.exclude(sync_frequency='manual'):
+            current_user_hour = _user_local_hour(user, now)
+
             is_first_sync_of_day = False
             if user.last_auto_sync is None:
                 is_first_sync_of_day = True
@@ -66,7 +79,7 @@ class Command(BaseCommand):
                     is_first_sync_of_day = True
             
             if is_first_sync_of_day:
-                if user.sync_preferred_hour != current_hour:
+                if user.sync_preferred_hour != current_user_hour:
                     continue
             
             if not self.should_sync_now(user, now):
@@ -106,7 +119,7 @@ class Command(BaseCommand):
         
         synced_accounts = Account.objects.filter(
             user=user,
-            gocardless_code__isnull=False
+            requisition_id__isnull=False,
         ).select_related()
         
         if not synced_accounts.exists():

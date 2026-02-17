@@ -2,6 +2,8 @@ import pandas as pd
 import os
 import datetime
 
+from django.utils import timezone
+
 
 def read_historical_prices_eur_demo():
     df = pd.read_csv(os.path.join("demo", "demo_static_data", "historical_prices_eur.csv"), index_col='Gmt time', parse_dates=True)
@@ -15,7 +17,7 @@ HISTORICAL_PRICES_EUR_DEMO = read_historical_prices_eur_demo()
 def get_historical_prices_eur_demo_shifted():
     df = HISTORICAL_PRICES_EUR_DEMO.copy()
     last_date_in_df = pd.Timestamp(df.index.max())
-    current_date = pd.Timestamp(datetime.date.today())
+    current_date = pd.Timestamp(timezone.localdate())
     delta = pd.Timedelta(days=(current_date - last_date_in_df).days)
     df.index = df.index + delta    
     return df

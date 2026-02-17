@@ -13,8 +13,22 @@
             <!-- General Section -->
             <div class="mb-8">
                 <h2 class="font-medium text-lg text-(--first-text-color) mb-3">General</h2>
-                <div class="text-(--third-text-color) text-sm">
-                    No settings available yet.
+                
+                <div>
+                    <label for="user_timezone" class="block text-sm font-medium text-(--third-text-color) mb-2">
+                        Timezone
+                    </label>
+                    <select name="user_timezone" id="user_timezone"
+                            class="w-full max-w-md bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)">
+                        {% for value, label in timezone_choices %}
+                        <option value="{{ value }}" {% if user.user_timezone == value %}selected{% endif %}>
+                            {{ label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <p class="text-xs text-(--third-text-color) mt-2">
+                        Choose a geographical timezone (e.g., <span class="font-mono">Europe/Rome</span>) rather than a fixed offsets (e.g., <span class="font-mono">GMT+1</span>) for proper Daylight Saving Time support. All datetimes will be displayed in the selected timezone.
+                    </p>
                 </div>
             </div>
 
@@ -23,8 +37,22 @@
             <!-- Appearance Section -->
             <div class="mb-8">
                 <h2 class="font-medium text-lg text-(--first-text-color) mb-3">Appearance</h2>
-                <div class="text-(--third-text-color) text-sm">
-                    No settings available yet.
+                
+                <div>
+                    <label for="theme" class="block text-sm font-medium text-(--third-text-color) mb-2">
+                        Theme
+                    </label>
+                    <select name="theme" id="theme"
+                            class="w-full max-w-md bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)">
+                        {% for value, label in user.THEME_CHOICES %}
+                        <option value="{{ value }}" {% if user.theme == value %}selected{% endif %}>
+                            {{ label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <p class="text-xs text-(--third-text-color) mt-2">
+                        Choose your preferred color theme. System will follow your browser's preference.
+                    </p>
                 </div>
             </div>
 
@@ -69,7 +97,7 @@
                             {% endfor %}
                         </select>
                         <p class="text-xs text-(--third-text-color) mt-2">
-                            Time of the first sync of the day (UTC time). Subsequent syncs occur at regular intervals from this time.
+                            Time of the first sync of the day (in your timezone). Subsequent syncs occur at regular intervals from this time.
                         </p>
                     </div>
 
@@ -77,7 +105,7 @@
                     {% if user.last_auto_sync %}
                     <div class="pt-4 border-t border-(--border-color)">
                         <div class="text-xs text-(--third-text-color)">
-                            Last automatic sync: {{ user.last_auto_sync|date:"Y-m-d H:i" }} UTC
+                            Last automatic sync: {{ user.last_auto_sync|date:"Y-m-d H:i" }}
                         </div>
                     </div>
                     {% endif %}

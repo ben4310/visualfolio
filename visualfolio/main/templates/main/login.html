@@ -12,47 +12,14 @@
               rel="stylesheet">
         <meta name="robots" content="noindex">
         <script>
-                // Function to get cookie value
-                function getCookie(name) {
-                  const value = `; ${document.cookie}`;
-                  const parts = value.split(`; ${name}=`);
-                  if (parts.length === 2) return parts.pop().split(';').shift();
-               }
-
-               // Function to set cookie value
-               function setCookie(name, value) {
-                  document.cookie = `${name}=${value}; path=/; domain=.visualfol.io; Secure; SameSite=Strict`;
-               }
-
-               const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
-               function detectSystemTheme() {
-                  if (prefersDarkScheme.matches) {
-                     return 'dark';
-                  } else {
-                     return 'light';
-                  }
-               }
-
-               // Function to apply the theme
-               function applyCookieTheme() {
-                  let theme = getCookie('theme');
-                  if (theme === 'dark') {
-                     document.documentElement.classList.add('dark');
-                  } else if (theme === 'light') {
-                     document.documentElement.classList.remove('dark');
-                  }
-               }
-
-               // Initialize theme
-               (function () {
-                  let theme = getCookie('theme');
-                  if (!theme) {
-                     detectedTheme = detectSystemTheme();
-                     setCookie('theme', detectedTheme);
-                     applyCookieTheme();
-                  }
-                  else { applyCookieTheme(); }
-               })();
+            (function() {
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                if (prefersDark) {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+            })();
         </script>
     </head>
     <body class="flex bg-(--first-bg-color) h-screen">

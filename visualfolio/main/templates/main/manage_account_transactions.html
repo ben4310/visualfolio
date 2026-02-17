@@ -219,7 +219,7 @@ document.getElementById('addTransactionForm').addEventListener('submit', async f
     // Add to FormData
     formData.append('entity', entity);
     formData.append('amount', amount.toString());
-    formData.append('datetime', dt);
+    formData.append('datetime', withBrowserTzOffset(dt));
     if (category) {
         formData.append('category', category);
     }

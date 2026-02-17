@@ -99,7 +99,6 @@ CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in csrf_origins_str.split(',')
 # Customization
 # -----------------------------------------------------------------------------
 BASE_CURRENCY = {"code": "EUR", "symbol": "€"}
-DEFAULT_THEME = "light"
 BALANCE_HISTORY_TIMESPAN_DAYS = 365
 
 # GoCardless Bank Account Data API
@@ -128,6 +127,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'main.middleware.TimezoneMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 

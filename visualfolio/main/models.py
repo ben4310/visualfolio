@@ -1,3 +1,5 @@
+import zoneinfo
+
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractUser
@@ -41,6 +43,17 @@ class CustomUser(AbstractUser):
         ("24h", "Every 24 hours"),
     ]
     
+    THEME_CHOICES = [
+        ("system", "System"),
+        ("light", "Light"),
+        ("dark", "Dark"),
+    ]
+
+    TIMEZONE_CHOICES = sorted(
+        [(tz, tz) for tz in zoneinfo.available_timezones()],
+        key=lambda x: x[0],
+    )
+    
     last_update = models.DateTimeField(null=True, blank=True)
     last_full_refresh = models.DateTimeField(null=True, blank=True)
     
@@ -56,7 +69,21 @@ class CustomUser(AbstractUser):
         help_text="Preferred hour of day (0-23) for automatic sync"
     )
     last_auto_sync = models.DateTimeField(null=True, blank=True)
+    
+    # Theme preference
+    theme = models.CharField(
+        max_length=10,
+        choices=THEME_CHOICES,
+        default="system"
+    )
 
+    # Timezone preference
+    user_timezone = models.CharField(
+        max_length=63,
+        choices=TIMEZONE_CHOICES,
+        default="UTC",
+        help_text="IANA timezone for date/time display and input",
+    )
 
 class Account(models.Model):
     SYNC_STATUS_CHOICES = [

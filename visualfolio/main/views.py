@@ -2,6 +2,8 @@ import os
 import json
 import datetime
 import re
+import zoneinfo
+
 import pandas as pd
 import numpy as np
 from dateutil.relativedelta import relativedelta
@@ -166,11 +168,12 @@ class OverviewView(LoginRequiredMixin, TemplateView):
         balances_df = pd.DataFrame(list(latest_balances))
 
         # Calculate current values
+        today = timezone.localdate()
         balances_df["current_price"] = balances_df.apply(
             lambda x: get_prices_daily(
                 x["asset"],
                 settings.BASE_CURRENCY["code"],
-                datetime.datetime.now().date(),
+                today,
             ),
             axis=1,
         )
@@ -806,11 +809,12 @@ class AccountsView(LoginRequiredMixin, TemplateView):
                 },
                 inplace=True,
             )
+            today = timezone.localdate()
             balances_df["current_price"] = balances_df.apply(
                 lambda x: get_prices_daily(
                     x["asset"],
                     settings.BASE_CURRENCY["code"],
-                    datetime.datetime.now().date(),
+                    today,
                 ),
                 axis=1,
             )
@@ -1012,7 +1016,7 @@ class TransactionsView(LoginRequiredMixin, ListView):
             formatted_transactions.append(txn)
 
         context["transactions"] = formatted_transactions
-        context["today"] = datetime.datetime.now().date()
+        context["today"] = timezone.localdate()
         context["base_currency"] = settings.BASE_CURRENCY["symbol"]
 
         return context
@@ -1059,8 +1063,9 @@ class EarningsView(LoginRequiredMixin, TemplateView):
 
         df["color"] = df["entity"].map(colors_map[self.request.theme])
 
-        # Ensure 'datetime' is a datetime object and convert to UTC
-        df["datetime"] = pd.to_datetime(df["datetime"]).dt.tz_localize(None)
+        # Convert datetimes to user timezone for correct month grouping, then strip tz for pandas
+        user_tz = str(timezone.get_current_timezone())
+        df["datetime"] = pd.to_datetime(df["datetime"]).dt.tz_convert(user_tz).dt.tz_localize(None)
 
         # Extract the month from datetime
         df["month"] = df["datetime"].dt.to_period("M").dt.to_timestamp()
@@ -1629,7 +1634,7 @@ class AddAssetBalanceView(LoginRequiredMixin, View):
             AccountAsset.objects.create(account=account, asset=asset)
             
             # Create flat balance history from BALANCE_HISTORY_TIMESPAN_DAYS ago to today
-            today = datetime.date.today()
+            today = timezone.localdate()
             start_date = today - datetime.timedelta(days=settings.BALANCE_HISTORY_TIMESPAN_DAYS)
             
             entries = []
@@ -1808,9 +1813,11 @@ class AddTransactionView(LoginRequiredMixin, View):
             transaction_datetime = parse_datetime(datetime_str)
             if not transaction_datetime:
                 return JsonResponse({"success": False, "error": "Invalid datetime format"}, status=400)
-            # Make timezone-aware if naive (datetime-local input omits timezone)
+            # Front-end attaches the browser UTC offset, so this path is a safety fallback only.
             if timezone.is_naive(transaction_datetime):
-                transaction_datetime = timezone.make_aware(transaction_datetime)
+                transaction_datetime = timezone.make_aware(
+                    transaction_datetime, timezone.get_current_timezone()
+                )
         except Exception:
             return JsonResponse({"success": False, "error": "Invalid datetime format"}, status=400)
 
@@ -1892,13 +1899,15 @@ class AddTradeView(LoginRequiredMixin, View):
         if not from_asset_code or not to_asset_code:
             return JsonResponse({"success": False, "error": "Both assets are required"}, status=400)
         
-        # Parse datetime
+        # Front-end attaches the browser UTC offset; naive fallback retained for safety.
         try:
             trade_datetime = parse_datetime(datetime_str)
             if not trade_datetime:
                 return JsonResponse({"success": False, "error": "Invalid datetime format"}, status=400)
             if timezone.is_naive(trade_datetime):
-                trade_datetime = timezone.make_aware(trade_datetime)
+                trade_datetime = timezone.make_aware(
+                    trade_datetime, timezone.get_current_timezone()
+                )
         except Exception:
             return JsonResponse({"success": False, "error": "Invalid datetime format"}, status=400)
         
@@ -2069,6 +2078,20 @@ class DeleteTradeView(LoginRequiredMixin, View):
         return JsonResponse({"success": True})
 
 
+def _build_timezone_choices():
+    """Build a sorted list of (value, label) tuples for the timezone selector.
+    
+    Uses geographical timezone names (IANA) rather than fixed UTC offsets.
+    IANA timezones automatically handle Daylight Saving Time transitions,
+    ensuring dates and times are always displayed and interpreted correctly.
+    """
+    all_tzs = sorted(zoneinfo.available_timezones())
+    choices = [(tz_name, tz_name) for tz_name in all_tzs]
+    return choices
+
+TIMEZONE_CHOICES = _build_timezone_choices()
+
+
 class SettingsView(LoginRequiredMixin, View):
     """User settings page."""
     login_url = "login"
@@ -2077,6 +2100,7 @@ class SettingsView(LoginRequiredMixin, View):
         context = {
             "current_view": "settings",
             "user": request.user,
+            "timezone_choices": TIMEZONE_CHOICES,
         }
         return render(request, "main/settings.html", context)
 
@@ -2085,6 +2109,8 @@ class SettingsView(LoginRequiredMixin, View):
         
         sync_frequency = request.POST.get("sync_frequency")
         sync_preferred_hour = request.POST.get("sync_preferred_hour")
+        theme = request.POST.get("theme")
+        user_timezone = request.POST.get("user_timezone", "").strip()
         
         if sync_frequency in dict(user.SYNC_FREQUENCY_CHOICES):
             user.sync_frequency = sync_frequency
@@ -2096,6 +2122,15 @@ class SettingsView(LoginRequiredMixin, View):
         except (ValueError, TypeError):
             pass
         
+        if theme in dict(user.THEME_CHOICES):
+            user.theme = theme
+
+        if user_timezone and user_timezone in zoneinfo.available_timezones():
+            user.user_timezone = user_timezone
+        
         user.save()
         messages.success(request, "Settings saved successfully")
         return redirect("settings")
+class DeleteUserAccountView(LoginRequiredMixin, View):
+    """Delete the current user and all associated data."""
+    login_url = "login"

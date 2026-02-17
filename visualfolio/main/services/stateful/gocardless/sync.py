@@ -18,6 +18,7 @@ Retry strategy (scratch):
 """
 
 import logging
+import zoneinfo
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
@@ -120,8 +121,17 @@ class TransactionSyncService:
         """Route to scratch or incremental for each linked asset."""
         from main.models import AccountAsset
         
-        today = date.today()
-        earliest_available = today - timedelta(days=account.transaction_total_days)
+    @staticmethod
+    def _resolve_user_tz(account: Account) -> zoneinfo.ZoneInfo:
+        """Resolve the account owner's timezone as a ZoneInfo instance."""
+        try:
+            return zoneinfo.ZoneInfo(account.user.user_timezone)
+        except (KeyError, zoneinfo.ZoneInfoNotFoundError, AttributeError):
+            return zoneinfo.ZoneInfo("UTC")
+
+        today = datetime.now(timezone.utc).date()
+        earliest_available_transactions_date = today - timedelta(days=account.transaction_total_days)
+        user_tz = self._resolve_user_tz(account)
 
         # Get all assets linked to this account via AccountAsset
         account_assets = AccountAsset.objects.filter(account=account).select_related('asset')
@@ -329,6 +339,7 @@ class TransactionSyncService:
     def _fetch_and_filter(
         self, account: Account, asset: Asset, account_asset, date_from: date, date_to: date,
     ) -> tuple[float, list[Transaction]]:
+        user_tz: zoneinfo.ZoneInfo | None = None,
         """
         Fetch balance and transactions from the API.
         The two calls are made immediately one after the other to minimize drift.
@@ -354,6 +365,7 @@ class TransactionSyncService:
 
         transactions = map_booked_transactions(
             txn_resp, account, asset, date_from, date_to,
+            user_tz=user_tz,
         )
 
         # Update rate limits from most recent call (transactions endpoint)

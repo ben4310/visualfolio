@@ -17,44 +17,26 @@
     {% endblock extrahead %}
     <link rel="stylesheet" href="{% static 'main/css/style.css' %}">
     <script>
-        function getCookie(name) {
-          const value = `; ${document.cookie}`;
-          const parts = value.split(`; ${name}=`);
-          if (parts.length === 2) return parts.pop().split(';').shift();
-       }
-
-       function setCookie(name, value) {
-          document.cookie = `${name}=${value}; path=/; domain=.visualfol.io; Secure; SameSite=Strict`;
-       }
-
-       const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
-       function detectSystemTheme() {
-          if (prefersDarkScheme.matches) {
-             return 'dark';
-          } else {
-             return 'light';
-          }
-       }
-
-       function applyCookieTheme() {
-          let theme = getCookie('theme');
-          if (theme === 'dark') {
-             document.documentElement.classList.add('dark');
-          } else if (theme === 'light') {
-             document.documentElement.classList.remove('dark');
-          }
-       }
-
-       // Initialize theme
-       (function () {
-          let theme = getCookie('theme');
-          if (!theme) {
-             detectedTheme = detectSystemTheme();
-             setCookie('theme', detectedTheme);
-             applyCookieTheme();
-          }
-          else { applyCookieTheme(); }
-       })();
+        (function() {
+            const userTheme = '{{ user.theme }}';
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            
+            let shouldUseDark = false;
+            if (userTheme === 'dark') {
+                shouldUseDark = true;
+            } else if (userTheme === 'light') {
+                shouldUseDark = false;
+            } else {
+                // system
+                shouldUseDark = prefersDark;
+            }
+            
+            if (shouldUseDark) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        })();
     </script>
 </head>
 <body class="flex bg-(--first-bg-color) min-h-screen select-none">

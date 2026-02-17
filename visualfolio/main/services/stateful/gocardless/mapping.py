@@ -1,14 +1,24 @@
 """
-Strict mapping from GoCardless Bank Account Data API responses
+Mapping from GoCardless Bank Account Data API responses
 to internal Transaction model instances.
+
+Date parsing is intentionally tolerant: banks vary widely in how they format
+dates (date-only, full ISO 8601, with/without timezone). When timezone info
+is absent, the user's configured timezone is assumed; when only a date is
+available the time is set to 12:00 (midday) to minimise date-boundary errors.
 """
 
 import logging
-from datetime import date, datetime, timezone
+import zoneinfo
+from datetime import date, datetime, time, timezone
+
+import dateutil.parser
 
 from main.models import Account, Asset, Transaction
 
 logger = logging.getLogger(__name__)
+
+MIDDAY = time(12, 0)
 
 
 class CurrencyMismatchError(Exception):
@@ -81,19 +91,90 @@ def extract_current_balance(balances_response: dict, expected_currency: str) -> 
     return amount
 
 
+def _parse_transaction_datetime(
+    raw_date_str: str | None,
+    txn_id: str,
+    user_tz: zoneinfo.ZoneInfo,
+) -> datetime:
+    """
+    Parse a date or datetime string from the bank API into a UTC-aware datetime.
+
+    Strategy (ordered by priority):
+      1. Full ISO 8601 with timezone  -> use as-is, convert to UTC.
+      2. Full ISO 8601 without tz     -> assume *user_tz*, convert to UTC.
+      3. Date-only (YYYY-MM-DD etc.)  -> set time to midday in *user_tz*, convert to UTC.
+      4. Any other parseable format   -> dateutil fallback, same tz rules.
+      5. None / unparseable           -> midday today in *user_tz*, convert to UTC.
+    """
+    if not raw_date_str:
+        logger.warning(
+            "Transaction '%s': no date provided, defaulting to midday today",
+            txn_id,
+        )
+        today = datetime.now(timezone.utc).astimezone(user_tz).date()
+        return datetime.combine(today, MIDDAY, tzinfo=user_tz).astimezone(timezone.utc)
+
+    raw_date_str = raw_date_str.strip()
+
+    # Try date-only first (YYYY-MM-DD) -- must come before datetime.fromisoformat
+    # because Python 3.11+ accepts bare dates as datetimes (returning midnight).
+    try:
+        d = date.fromisoformat(raw_date_str)
+        return datetime.combine(d, MIDDAY, tzinfo=user_tz).astimezone(timezone.utc)
+    except ValueError:
+        pass
+
+    # Full ISO 8601 datetime (handles 2024-02-27T15:05:06.123Z, 2024-02-27T15:05:06+01:00, etc.)
+    try:
+        dt = datetime.fromisoformat(raw_date_str)
+        if dt.tzinfo is not None:
+            return dt.astimezone(timezone.utc)
+        # Naive datetime: assume user timezone
+        return dt.replace(tzinfo=user_tz).astimezone(timezone.utc)
+    except ValueError:
+        pass
+
+    # Fallback: dateutil tolerant parser for non-standard formats
+    try:
+        dt = dateutil.parser.parse(raw_date_str)
+        if dt.tzinfo is not None:
+            return dt.astimezone(timezone.utc)
+        # If dateutil parsed only a date (time is midnight and no time indicators in string),
+        # treat as date-only and use midday
+        if dt.hour == 0 and dt.minute == 0 and dt.second == 0 and ":" not in raw_date_str:
+            return datetime.combine(dt.date(), MIDDAY, tzinfo=user_tz).astimezone(timezone.utc)
+        return dt.replace(tzinfo=user_tz).astimezone(timezone.utc)
+    except (ValueError, dateutil.parser.ParserError):
+        pass
+
+    logger.warning(
+        "Transaction '%s': unparseable date '%s', defaulting to midday today",
+        txn_id, raw_date_str,
+    )
+    today = datetime.now(timezone.utc).astimezone(user_tz).date()
+    return datetime.combine(today, MIDDAY, tzinfo=user_tz).astimezone(timezone.utc)
+
+
 def map_booked_transactions(
     transactions_response: dict,
     account: Account,
     expected_asset: Asset,
     date_from: date,
     date_to: date,
+    user_tz: zoneinfo.ZoneInfo | None = None,
 ) -> list[Transaction]:
     """
     Map booked transactions from the GoCardless API response to unsaved Transaction instances.
     Only includes transactions within [date_from, date_to].
     Raises CurrencyMismatchError on currency mismatches.
     Silently skips zero-amount transactions.
+
+    Args:
+        user_tz: The account owner's timezone. Used as fallback when bank-provided
+                 dates lack timezone info. Defaults to UTC if not provided.
     """
+    if user_tz is None:
+        user_tz = zoneinfo.ZoneInfo("UTC")
     booked = transactions_response.get("transactions", {}).get("booked", [])
     mapped: list[Transaction] = []
 
@@ -172,18 +253,15 @@ def map_booked_transactions(
             logger.debug("Skipping zero-amount transaction '%s'", txn_id)
             continue
 
-        # --- Date ---
-        booking_date_str = raw_txn.get("bookingDate") or raw_txn.get("valueDate")
-        if not booking_date_str:
-            raise TransactionMappingError(
-                f"Transaction '{txn_id}': no bookingDate or valueDate"
-            )
-        try:
-            booking_date = date.fromisoformat(booking_date_str)
-        except ValueError:
-            raise TransactionMappingError(
-                f"Transaction '{txn_id}': invalid date '{booking_date_str}'"
-            )
+        # --- Date/Datetime ---
+        booking_date_str = (
+            raw_txn.get("bookingDateTime")
+            or raw_txn.get("bookingDate")
+            or raw_txn.get("valueDateTime")
+            or raw_txn.get("valueDate")
+        )
+        txn_datetime = _parse_transaction_datetime(booking_date_str, txn_id, user_tz)
+        booking_date = txn_datetime.date()
 
         # Filter to requested range
         if booking_date < date_from or booking_date > date_to:
@@ -205,10 +283,6 @@ def map_booked_transactions(
             category = category[:31]
 
         # --- Build unsaved Transaction ---
-        txn_datetime = datetime(
-            booking_date.year, booking_date.month, booking_date.day,
-            tzinfo=timezone.utc,
-        )
         mapped.append(
             Transaction(
                 account=account,
