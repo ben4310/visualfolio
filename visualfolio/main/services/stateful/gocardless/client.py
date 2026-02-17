@@ -17,22 +17,44 @@ RETRYABLE_STATUS_CODES = {500, 502, 503, 504}
 TOKEN_REFRESH_MARGIN = timedelta(minutes=5)
 
 
+def _get_header_ignore_case(headers: dict, name: str) -> str | None:
+    """
+    Return header value by case-insensitive name.
+    Hyphens and underscores are treated as equivalent. A leading "http_" on
+    the key (CGI-style) is ignored so that e.g. http_x_ratelimit_account_success_limit
+    matches x-ratelimit-account-success-limit.
+    """
+    if not headers:
+        return None
+    name_norm = name.lower().replace("-", "_")
+    for k, v in headers.items():
+        if k is None:
+            continue
+        key_norm = k.lower().replace("-", "_")
+        if key_norm.startswith("http_"):
+            key_norm = key_norm[5:]
+        if key_norm == name_norm:
+            return v
+    return None
+
+
 class GoCardlessAPIError(Exception):
     """Raised when the GoCardless API returns a non-retryable error."""
 
-    def __init__(self, status_code: int, summary: str, detail: str = ""):
+    def __init__(self, status_code: int, summary: str, detail: str = "", headers: dict | None = None):
         self.status_code = status_code
         self.summary = summary
         self.detail = detail
+        self.headers = headers or {}
         super().__init__(f"[{status_code}] {summary}: {detail}")
 
 
 class GoCardlessRateLimitError(GoCardlessAPIError):
     """Raised when a rate limit (429) is hit."""
 
-    def __init__(self, retry_after: int, summary: str, detail: str):
+    def __init__(self, retry_after: int, summary: str, detail: str, headers: dict | None = None):
         self.retry_after = retry_after
-        super().__init__(429, summary, detail)
+        super().__init__(429, summary, detail, headers)
 
 
 class GoCardlessClient:
@@ -143,12 +165,16 @@ class GoCardlessClient:
                 continue
 
             if resp.status_code == 429:
-                retry_after = int(resp.headers.get("HTTP_X_RATELIMIT_ACCOUNT_SUCCESS_RESET", 60))
-                body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+                headers_dict = dict(resp.headers)
+                reset_header = _get_header_ignore_case(headers_dict, "x-ratelimit-account-success-reset")
+                retry_after = int(reset_header) if reset_header is not None else 60
+                ct = _get_header_ignore_case(headers_dict, "content-type") or ""
+                body = resp.json() if ct.startswith("application/json") else {}
                 raise GoCardlessRateLimitError(
                     retry_after,
                     body.get("summary", "Rate limit exceeded"),
                     body.get("detail", ""),
+                    headers_dict,
                 )
 
             if resp.status_code in RETRYABLE_STATUS_CODES:
@@ -161,11 +187,14 @@ class GoCardlessClient:
                 continue
 
             if resp.status_code >= 400:
-                body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+                headers_dict = dict(resp.headers)
+                ct = _get_header_ignore_case(headers_dict, "content-type") or ""
+                body = resp.json() if ct.startswith("application/json") else {}
                 raise GoCardlessAPIError(
                     resp.status_code,
                     body.get("summary", f"HTTP {resp.status_code}"),
                     body.get("detail", resp.text),
+                    headers_dict,
                 )
 
             return resp.json(), dict(resp.headers)
@@ -177,34 +206,11 @@ class GoCardlessClient:
         Extract per-account rate limit info from response headers.
         These headers only appear for successful account data requests (details/transactions/balances).
         General rate limits are app-wide and not tracked.
-        
-        Note: requests library uses standard HTTP header format (case-insensitive).
-        GoCardless sends: X-RateLimit-Account-Success-Limit etc.
         """
-        # Try multiple possible header name formats (requests CaseInsensitiveDict handles most)
-        def get_header(name_variants):
-            for name in name_variants:
-                val = headers.get(name)
-                if val is not None:
-                    return val
-            return None
-        
         return {
-            'account_success_limit': get_header([
-                'X-RateLimit-Account-Success-Limit',
-                'X-Ratelimit-Account-Success-Limit',
-                'x-ratelimit-account-success-limit',
-            ]),
-            'account_success_remaining': get_header([
-                'X-RateLimit-Account-Success-Remaining',
-                'X-Ratelimit-Account-Success-Remaining',
-                'x-ratelimit-account-success-remaining',
-            ]),
-            'account_success_reset': get_header([
-                'X-RateLimit-Account-Success-Reset',
-                'X-Ratelimit-Account-Success-Reset',
-                'x-ratelimit-account-success-reset',
-            ]),
+            "account_success_limit": _get_header_ignore_case(headers, "x-ratelimit-account-success-limit"),
+            "account_success_remaining": _get_header_ignore_case(headers, "x-ratelimit-account-success-remaining"),
+            "account_success_reset": _get_header_ignore_case(headers, "x-ratelimit-account-success-reset"),
         }
 
     def _get(self, path: str, **kwargs) -> tuple[dict, dict]:
