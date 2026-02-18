@@ -218,6 +218,7 @@ Transactions
                 <!-- Define table headers -->
                 <th scope="col" class="px-6 py-3 w-1/6 text-center whitespace-nowrap">Account</th>
                 <th scope="col" class="px-6 py-3 w-1/6 text-center whitespace-nowrap">Date</th>
+                <th scope="col" class="px-6 py-3 w-1/6 text-center whitespace-nowrap">Time</th>
                 <th scope="col" class="px-6 py-3">Entity</th>
                 <th scope="col" class="px-6 py-3 text-right w-1/4">Amount</th>
             </tr>
@@ -241,8 +242,11 @@ Transactions
                                         </span>
                     </div>
                 </td>
-                <td class="px-6 py-2 text-right whitespace-nowrap text-(--third-text-color)">
+                <td class="px-6 py-2 text-center whitespace-nowrap text-(--third-text-color)">
                     {{ transaction.datetime|date:"D, d M Y" }}
+                </td>
+                <td class="px-6 py-2 text-center whitespace-nowrap text-(--third-text-color)">
+                    {{ transaction.datetime|time:"H:i:s" }}
                 </td>
                 <td class="px-6 py-2 font-normal text-(--first-text-color)">{{ transaction.entity }}</td>
                 <td class="tabular-nums px-6 py-2 font-normal text-right {% if transaction.amount > 0 %}text-(--green-text-free-color){% else %}text-(--first-text-color){% endif %}">

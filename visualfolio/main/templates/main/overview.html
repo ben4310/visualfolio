@@ -15,9 +15,8 @@ Overview
 <div class="flex flex-col space-y-6">
     <div class="flex justify-between items-end">
         <h2 class="hidden lg:block font-medium text-(--first-text-color) -mb-1 mr-6">Streamgraph</h2>
-        <div class="flex space-x-4 items-end bg-(--second-bg-color) border border-(--border-color) rounded-xl py-3 px-5">
-            <div class="text-xs text-end font-medium text-(--third-text-color) mb-1">Total asset value:</div>
-            <div id="total-asset-value" class="text-(--first-text-color) text-end text-xl tabular-nums font-normal whitespace-nowrap" data-default="{{ total_asset_value|floatformat:'2'|intcomma }}">
+        <div class="flex space-x-4 items-end bg-(--second-bg-color) border border-(--border-color) rounded-xl py-5 pl-9 px-5">
+            <div id="total-asset-value" class="text-(--first-text-color) text-end text-3xl font-normal whitespace-nowrap" data-default="{{ total_asset_value|floatformat:'2'|intcomma }}">
                 {{ total_asset_value|floatformat:"2"|intcomma }} {{ base_currency }}
             </div>
         </div>
@@ -25,18 +24,24 @@ Overview
     <div id="streamgraph-container"
          class="h-[500px] bg-(--second-bg-color) border border-(--border-color) rounded-xl overflow-hidden">
     </div>
-    <div id="daily-details" class="m-6">
-        <div class="grid grid-cols-2 gap-12">
+    <div id="daily-details" class="m-4">
+        <div class="grid grid-cols-3 gap-12">
+            <div>
+                <h3 class="font-semibold text-(--first-text-color) mb-3">Total at date</h3>
+                <div id="hover-total-value" class="text-center">
+                    <span class="italic text-(--mid-bg-color)">Hover to display daily data</span>
+                </div>
+            </div>
             <div>
                 <h3 class="font-semibold text-(--first-text-color) mb-3">Transactions</h3>
-                <div id="transactions-list" class="text-sm text-(--third-text-color) italic">
-                    Hover over the chart to display daily data
+                <div id="transactions-list" class="text-left">
+                    <span class="italic text-(--mid-bg-color)">Hover to display daily data</span>
                 </div>
             </div>
             <div>
                 <h3 class="font-semibold text-(--first-text-color) mb-3">Trades</h3>
-                <div id="trades-list" class="text-sm text-(--third-text-color) italic">
-                    Hover over the chart to display daily data
+                <div id="trades-list" class="text-center">
+                    <span class="italic text-(--mid-bg-color)">Hover to display daily data</span>
                 </div>
             </div>
         </div>

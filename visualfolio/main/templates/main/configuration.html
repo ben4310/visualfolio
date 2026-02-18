@@ -13,7 +13,7 @@
                 Bank account syncing is not configured. GoCardless credentials are required.
             </div>
         {% else %}
-            <div class="bg-(--second-bg-color) border border-(--border-color) rounded-xl p-6 mb-6">
+            <div class="bg-(--second-bg-color) border border-(--border-color) rounded-xl p-6 mb-6 flex flex-col" style="max-height: calc(100vh - 200px);">
                 <div class="flex items-center justify-between mb-4">
                     <h2 class="font-medium text-lg text-(--first-text-color)">Select Bank</h2>
                     <a href="{% url 'configuration' %}" class="text-sm text-(--third-text-color) hover:text-(--first-text-color)">
@@ -47,7 +47,7 @@
                     <input type="text" id="bank-search" placeholder="Search by bank or account name..."
                            class="w-120 bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)">
                 </div>
-                <div class="h-[600px] overflow-y-auto bg-(--first-bg-color) border border-(--border-color) rounded-xl p-3">
+                <div class="flex-1 overflow-y-auto bg-(--first-bg-color) border border-(--border-color) rounded-xl p-3">
                     <div class="grid grid-cols-2 gap-3" id="banks-grid">
                         {% for inst in institutions %}
                         <form method="post" action="{% url 'bank_link' %}" class="bank-item" data-bank-name="{{ inst.name|lower }}">
@@ -151,15 +151,14 @@
                                     <div class="flex items-center space-x-2">
                                         <div class="text-md font-medium text-(--first-text-color)">{{ account.name }}</div>
                                         {% if not account.is_synced %}
-                                        <span class="text-xs ml-3 px-2 py-0.5 rounded-full bg-(--third-bg-color) text-(--third-text-color) font-medium">
+                                        <span class="text-xxs ml-3 px-2 py-0.5 rounded-full bg-(--third-bg-color) text-(--third-text-color) font-medium">
                                             MANUAL
                                         </span>
                                         {% endif %}
                                     </div>
                                 </div>
-                                <!-- Rate limit inline display (only for synced accounts) -->
                                 {% if account.is_synced %}
-                                <span class="text-xs ml-3 px-2 py-0.5 rounded-full bg-(--first-accent-color) text-white font-medium">
+                                <span class="text-xxs ml-3 px-2 py-0.5 rounded-full bg-(--first-accent-color) text-white font-medium">
                                     SYNCED
                                 </span>
                                 <div class="flex items-center space-x-3 ml-3">
@@ -191,7 +190,7 @@
                                 {% endif %}
                             </div>
                             <div class="flex-1"></div>
-                            <div class="flex items-center space-x-3 flex-shrink-0">
+                            <div class="flex items-center space-x-4 flex-shrink-0">
                                 {% if account.is_synced %}
                                 <span class="sync-badge text-xs px-2 py-0.5 rounded-full
                                     {% if account.sync_status == 'syncing' %}bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200
