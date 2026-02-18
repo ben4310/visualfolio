@@ -122,8 +122,9 @@ class ConnectionService:
         access_expires = now + timedelta(days=requisition.access_valid_for_days)
         
         # Check if this requisition is already linked
-        existing_account = Account.objects.filter(gocardless_code=str(requisition.pk)).first()
-        
+        existing_account = Account.objects.filter(requisition_id=str(requisition.pk)).first()
+        account_created_this_run = False
+
         if existing_account:
             # Update existing account
             existing_account.access_expires_at = access_expires
@@ -136,48 +137,65 @@ class ConnectionService:
                 user=requisition.user,
                 name=requisition.institution_name,
                 country=requisition.institution_country,
-                gocardless_code=str(requisition.pk),
+                requisition_id=str(requisition.pk),
                 gocardless_institution_id=requisition.institution_id,
                 transaction_total_days=requisition.transaction_total_days,
                 access_expires_at=access_expires,
-                sync_status="idle",
             )
+            account_created_this_run = True
             logger.info("Created account %s for requisition %s", account.pk, requisition.pk)
 
         # Create/update AccountAsset entries for each GoCardless account
         for gc_account_id in gc_account_ids:
-            # Fetch account details to determine currency
+            # Fetch account details to attempt currency determination
             account_details, _ = self.client.get_account_details(gc_account_id)
+            
+            # Try to determine asset from currency in account details
+            asset = None
             account_currency = account_details.get("account", {}).get("currency", "")
             
-            if not account_currency:
-                logger.warning("GoCardless account %s has no currency, skipping", gc_account_id)
-                continue
-                
-            try:
-                asset = Asset.objects.get(code=account_currency)
-            except Asset.DoesNotExist:
-                logger.warning("Currency %s not found in Asset table, skipping GoCardless account %s", 
-                             account_currency, gc_account_id)
-                continue
+            if account_currency:
+                try:
+                    asset = Asset.objects.get(code=account_currency)
+                    logger.info(
+                        "Mapped currency %s to asset for GC account %s",
+                        account_currency, gc_account_id
+                    )
+                except Asset.DoesNotExist:
+                    logger.warning(
+                        "Currency %s not found in Asset table for GC account %s, will attempt resolution during sync",
+                        account_currency, gc_account_id
+                    )
+            else:
+                logger.warning(
+                    "No currency in account details for GC account %s, will attempt resolution during sync",
+                    gc_account_id
+                )
             
-            # Create or update AccountAsset
-            account_asset, created = AccountAsset.objects.get_or_create(
+            # Create or update AccountAsset (asset may be NULL)
+            account_asset, created = AccountAsset.objects.update_or_create(
                 account=account,
-                asset=asset,
-                defaults={'gocardless_account_id': gc_account_id}
+                gocardless_account_id=gc_account_id,
+                defaults={'asset': asset}
             )
             
-            if not created and account_asset.gocardless_account_id != gc_account_id:
-                account_asset.gocardless_account_id = gc_account_id
-                account_asset.save(update_fields=['gocardless_account_id'])
-                logger.info("Updated AccountAsset %s with new GoCardless ID", account_asset.pk)
-            elif created:
-                logger.info("Created AccountAsset %s for %s - %s (GC ID: %s)", 
-                          account_asset.pk, account.name, asset.code, gc_account_id)
+            if created:
+                asset_info = asset.code if asset else "pending"
+                logger.info(
+                    "Created AccountAsset %s for %s - %s (GC ID: %s)",
+                    account_asset.pk, account.name, asset_info, gc_account_id
+                )
+            else:
+                logger.info(
+                    "Updated AccountAsset %s with GC account %s",
+                    account_asset.pk, gc_account_id
+                )
 
-        # Trigger initial sync in background
-        if account.sync_status == "idle":
+        # Trigger initial sync in background if any AccountAsset is idle
+        has_idle = AccountAsset.objects.filter(
+            account=account, sync_status="idle",
+        ).exists()
+        if has_idle:
             self._trigger_background_sync(account)
 
         return [account]

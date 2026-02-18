@@ -105,6 +105,15 @@
                         searchInput.value = '';
                     }
                 });
+
+                // Auto-focus search input when page loads if a country is selected
+                document.addEventListener('DOMContentLoaded', function() {
+                    var countrySelect = document.getElementById('country_name');
+                    var searchInput = document.getElementById('bank-search');
+                    if (countrySelect && countrySelect.value && searchInput) {
+                        searchInput.focus();
+                    }
+                });
                 </script>
                 {% else %}
                 <div class="text-(--third-text-color) text-sm bg-(--first-bg-color) border border-(--border-color) rounded-xl p-6 text-center">
@@ -140,6 +149,8 @@
         {% if all_accounts %}
             <div class="space-y-4">
                 {% for account in all_accounts %}
+                    {% with account_assets=account.account_assets.all %}
+                    {% with aa_count=account_assets|length %}
                     <div class="bg-(--first-bg-color) border border-(--border-color) rounded-lg p-4"
                          id="sync-row-{{ account.id }}" data-account-id="{{ account.id }}">
                         <div class="flex items-center justify-between">
@@ -161,52 +172,67 @@
                                 <span class="text-xxs ml-3 px-2 py-0.5 rounded-full bg-(--first-accent-color) text-white font-medium">
                                     SYNCED
                                 </span>
-                                <div class="flex items-center space-x-3 ml-3">
+                                <!-- Inline rate limit / sync badge for single AccountAsset -->
+                                {% if aa_count == 1 %}
+                                {% with aa=account_assets.0 %}
+                                <div class="flex items-center space-x-4 ml-3">
                                     <div class="text-sm text-(--third-text-color) whitespace-nowrap">
-                                        {% if account.account_success_limit %}
-                                            {{ account.account_success_remaining }}/<strong>{{ account.account_success_limit }}</strong> fetches
+                                        {% if aa.account_success_limit %}
+                                            <span class="font-semibold" data-rate-text>{{ aa.account_success_remaining }}/{{ aa.account_success_limit }}</span> fetches left
                                         {% else %}
-                                            0/<strong>-</strong> API calls
+                                            <span class="font-semibold" data-rate-text>0/-</span> API calls left
                                         {% endif %}
                                     </div>
                                     <div class="w-16 bg-(--third-bg-color) rounded-full h-1.5">
-                                        {% if account.account_success_limit %}
+                                        {% if aa.account_success_limit %}
                                         <div class="rate-limit-bar h-1.5 rounded-full transition-all"
-                                             data-remaining="{{ account.account_success_remaining }}"
-                                             data-limit="{{ account.account_success_limit }}">
+                                             data-remaining="{{ aa.account_success_remaining }}"
+                                             data-limit="{{ aa.account_success_limit }}">
                                         </div>
                                         {% else %}
                                         <div class="h-1.5 rounded-full bg-gray-300 dark:bg-gray-700" style="width: 0%"></div>
                                         {% endif %}
                                     </div>
-                                    <div class="text-sm text-(--third-text-color) whitespace-nowrap ml-3">
-                                        {% if account.account_success_reset %}
-                                        Resets in: <span class="reset-countdown" data-reset-time="{{ account.account_success_reset.isoformat }}">-</span>
-                                        {% else %}
-                                        Resets in: -
-                                        {% endif %}
-                                    </div>
                                 </div>
+                                {% endwith %}
+                                {% endif %}
                                 {% endif %}
                             </div>
                             <div class="flex-1"></div>
                             <div class="flex items-center space-x-4 flex-shrink-0">
                                 {% if account.is_synced %}
-                                <span class="sync-badge text-xs px-2 py-0.5 rounded-full
-                                    {% if account.sync_status == 'syncing' %}bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200
-                                    {% elif account.sync_status == 'success' or account.sync_status == 'idle' %}bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200
-                                    {% elif account.sync_status == 'error' %}bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200
-                                    {% else %}bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200{% endif %}">
-                                    {% if account.sync_status == 'syncing' %}Syncing...
-                                    {% elif account.sync_status == 'success' %}Synced
-                                    {% elif account.sync_status == 'error' %}Error
-                                    {% else %}{{ account.sync_status|title }}{% endif %}
+                                <!-- Sync badge for single AccountAsset (inline) -->
+                                {% if aa_count == 1 %}
+                                {% with aa=account_assets.0 %}
+                                <span class="sync-badge text-xs px-2 py-0.5 rounded-full"
+                                      data-aa-id="{{ aa.pk }}">
+                                    {% if aa.sync_status == 'syncing' %}
+                                    <span class="bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200 text-xs px-2 py-0.5 rounded-full">
+                                        Syncing...
+                                    </span>
+                                    {% elif aa.sync_status == 'idle' and aa.last_successful_sync %}
+                                    <span class="bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200 text-xs px-2 py-0.5 rounded-full">
+                                        Last sync: <span class="last-sync-time" data-sync-time="{{ aa.last_successful_sync.isoformat }}">-</span>
+                                    </span>
+                                    {% endif %}
                                 </span>
+                                {% endwith %}
+                                {% endif %}
                                 <button onclick="triggerSync({{ account.id }})"
-                                        class="sync-btn text-xs text-(--first-text-color) bg-(--second-bg-color) hover:bg-(--third-bg-color) cursor-pointer px-3 py-1.5 rounded border border-(--border-color) transition-colors"
-                                        {% if account.sync_status == 'syncing' %}disabled{% endif %}>
+                                        class="sync-btn text-xs text-(--first-text-color) bg-(--second-bg-color) hover:bg-(--third-bg-color) cursor-pointer px-3 py-1.5 rounded border border-(--border-color) transition-colors disabled:opacity-50 disabled:hover:bg-(--second-bg-color)"
+                                        id="sync-btn-{{ account.id }}"
+                                        {% for aa in account_assets %}{% if aa.sync_status == 'syncing' or aa.account_success_remaining == 0 %}disabled{% endif %}{% endfor %}>
                                     Sync now
                                 </button>
+                                {% if aa_count == 1 %}
+                                {% with aa=account_assets.0 %}
+                                {% if aa.account_success_remaining == 0 and aa.account_success_reset %}
+                                <div class="text-xs pr-4 text-(--third-text-color) whitespace-nowrap">
+                                    - resets in: <span class="reset-countdown font-semibold" data-reset-time="{{ aa.account_success_reset.isoformat }}">-</span>
+                                </div>
+                                {% endif %}
+                                {% endwith %}
+                                {% endif %}
                                 {% else %}
                                 <a href="{% url 'manage_account_assets' account.id %}"
                                    class="text-sm text-(--first-text-color) bg-(--second-bg-color) hover:bg-(--third-bg-color) cursor-pointer px-3 py-1.5 rounded border border-(--border-color) transition-colors">
@@ -220,36 +246,56 @@
                             </div>
                         </div>
 
-                        {% if account.is_synced and account.sync_error %}
-                            {% if 'currencyExchange' in account.sync_error or 'bank chose not to provide' in account.sync_error %}
-                                <!-- Bank's PSD2 Implementation Shortcoming -->
-                                <div class="mt-6 m-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded">
-                                    <div class="flex items-start space-x-2">
-                                        <svg class="w-5 h-5 m-2 mr-5 text-amber-600 dark:text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
-                                        </svg>
-                                        <div class="flex-1">
-                                            <div class="text-xs font-semibold text-amber-800 dark:text-amber-200 mb-1">
-                                                Missing currency conversion data
-                                            </div>
-                                            <div class="text-xs text-amber-700 dark:text-amber-300">
-                                                This bank returns transactions in foreign currencies without providing currency conversion data. 
-                                                This is a limitation of their PSD2 implementation (including <code class="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">currencyExchange</code> field is optional under PSD2).
-                                            </div>
-                                            <div class="text-xs text-amber-600 dark:text-amber-400 mt-2">
-                                                     Future versions of Visualfolio will feature live and historical market rates, allowing to convert and correctly import transactions even in this scenario.
-                                            </div>
+                        <!-- Multi-AccountAsset sub-rows -->
+                        {% if account.is_synced and aa_count > 1 %}
+                        <div class="mt-3 ml-7 space-y-2" id="aa-rows-{{ account.id }}">
+                            {% for aa in account_assets %}
+                            <div class="flex items-center space-x-3 text-sm aa-row" data-aa-id="{{ aa.pk }}">
+                                <span class="font-medium text-(--first-text-color) w-10">{{ aa.asset.code|default:"..." }}</span>
+                                <div class="flex items-center space-x-3">
+                                    <div class="text-sm text-(--third-text-color) whitespace-nowrap">
+                                        {% if aa.account_success_limit %}
+                                            <span class="font-semibold" data-rate-text>{{ aa.account_success_remaining }}/{{ aa.account_success_limit }}</span> fetches left
+                                        {% else %}
+                                            <span class="font-semibold" data-rate-text>0/-</span> API calls left
+                                        {% endif %}
+                                    </div>
+                                    <div class="w-16 bg-(--third-bg-color) rounded-full h-1.5">
+                                        {% if aa.account_success_limit %}
+                                        <div class="rate-limit-bar h-1.5 rounded-full transition-all"
+                                             data-remaining="{{ aa.account_success_remaining }}"
+                                             data-limit="{{ aa.account_success_limit }}">
                                         </div>
+                                        {% else %}
+                                        <div class="h-1.5 rounded-full bg-gray-300 dark:bg-gray-700" style="width: 0%"></div>
+                                        {% endif %}
                                     </div>
                                 </div>
-                            {% else %}
-                                <!-- Regular error -->
-                                <div class="mt-6 m-4 text-xs text-red-500 bg-red-50 dark:bg-red-900/20 p-3 rounded border border-red-200 dark:border-red-800">
-                                    {{ account.sync_error }}
-                                </div>
-                            {% endif %}
+                                <span class="sync-badge text-xs px-2 py-0.5 rounded-full
+                                    {% if aa.sync_status == 'syncing' %}bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200{% endif %}"
+                                      data-aa-id="{{ aa.pk }}">
+                                    {% if aa.sync_status == 'syncing' %}
+                                    <span class="bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200 text-xs px-2 py-0.5 rounded-full">
+                                        Syncing...
+                                    </span>
+                                    {% elif aa.sync_status == 'idle' and aa.last_successful_sync %}
+                                    <span class="bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200 text-xs px-2 py-0.5 rounded-full">
+                                        Last sync: <span class="last-sync-time" data-sync-time="{{ aa.last_successful_sync.isoformat }}">-</span>
+                                    </span>
+                                    {% endif %}
+                                </span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+
+                        {% if account.is_synced and aa_count == 1 %}
+                        {% with aa=account_assets.0 %}
+                        {% endwith %}
                         {% endif %}
                     </div>
+                    {% endwith %}
+                    {% endwith %}
                 {% endfor %}
             </div>
         {% else %}
@@ -291,6 +337,8 @@
                 </button>
             </div>
 
+            <p class="text-sm text-(--third-text-color) mb-4">Only transactions of manual (non-synced) accounts can be edited.</p>
+
             <!-- Filters -->
             <div class="flex gap-3 mb-4">
                 <select id="accountFilter" onchange="applyTransactionFilters()" 
@@ -304,7 +352,7 @@
                 <select id="assetFilter" onchange="applyTransactionFilters()" 
                         class="bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)">
                     <option value="">All Assets</option>
-                    {% for asset in fiat_assets %}
+                    {% for asset in assets_with_balance %}
                     <option value="{{ asset.code }}" {% if selected_asset == asset.code %}selected{% endif %}>{{ asset.code }} - {{ asset.name }}</option>
                     {% endfor %}
                 </select>
@@ -360,6 +408,7 @@
         <div id="addTransactionModal" class="hidden fixed inset-0 flex items-center justify-center z-50" style="background-color: rgba(0, 0, 0, 0.15);">
             <div class="bg-(--second-bg-color) border border-(--border-color) rounded-xl p-6 w-full max-w-md">
                 <h3 class="text-lg font-medium text-(--first-text-color) mb-2">Add Transaction</h3>
+                <p class="text-sm text-(--third-text-color) mb-4">You can add transactions only for manual (non-synced) accounts. To add a transaction, you need to add the <span class="font-medium">account</span> and <span class="font-medium">asset balance</span> first.</p>
                 <form id="addTransactionForm">
                     {% csrf_token %}
                     
@@ -381,7 +430,7 @@
                         <select id="txnAsset" required 
                                 class="w-full bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)">
                             <option value="">Select asset...</option>
-                            {% for asset in fiat_assets %}
+                            {% for asset in assets_with_balance %}
                             <option value="{{ asset.code }}">{{ asset.code }} - {{ asset.name }}</option>
                             {% endfor %}
                         </select>
@@ -419,16 +468,6 @@
                         <input type="text" id="txnCategory" 
                                class="w-full bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)" 
                                placeholder="e.g., Groceries">
-                    </div>
-
-                    <div class="flex items-center justify-between mb-4">
-                        <div class="flex items-center gap-2">
-                            <label class="inline-flex items-center cursor-pointer">
-                                <input type="checkbox" id="txnInfluencesBalance" class="sr-only peer" checked>
-                                <div class="relative w-11 h-6 bg-gray-200 dark:bg-gray-700 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-(--first-accent-color)"></div>
-                            </label>
-                            <span class="text-xs font-medium text-(--third-text-color)">Influences balance</span>
-                        </div>
                     </div>
 
                     <div class="flex gap-3">
@@ -517,8 +556,7 @@
         <div id="addTradeModal" class="hidden fixed inset-0 flex items-center justify-center z-50" style="background-color: rgba(0, 0, 0, 0.15);">
             <div class="bg-(--second-bg-color) border border-(--border-color) rounded-xl p-6 w-full max-w-md">
                 <h3 class="text-lg font-medium text-(--first-text-color) mb-2">Add Trade</h3>
-                <p class="text-sm text-(--third-text-color) mb-4">You can edit trades only in manual (non-synced) accounts. Before adding a trade, you need to add the <span class="font-medium">account</span> and <span class="font-medium">assets</span> first.</p>
-</p>
+                <p class="text-sm text-(--third-text-color) mb-4">You can add trades only for manual (non-synced) accounts. To add a transaction, you need to add the <span class="font-medium">account</span> and <span class="font-medium">asset balance</span> first.</p>
                 <form id="addTradeForm">
                     {% csrf_token %}
                     
@@ -613,6 +651,38 @@
         {% endif %}
     {% endif %}
 
+    <!-- Delete Account Confirmation Modal -->
+    <div id="deleteAccountModal" class="hidden fixed inset-0 flex items-center justify-center z-50" style="background-color: rgba(0, 0, 0, 0.15);">
+        <div class="bg-(--second-bg-color) border border-(--border-color) rounded-xl p-6 w-full max-w-md">
+            <h3 class="text-lg font-medium text-(--first-text-color) mb-2">Delete Account?</h3>
+            <p class="text-sm text-(--third-text-color) mb-4">
+                Are you sure you want to delete "<span id="deleteAccountName" class="font-medium text-(--first-text-color)"></span>"?
+            </p>
+            <p class="text-sm text-(--third-text-color) mb-2">
+                This data will permanently deleted from Visualfolio:
+            </p>
+            <ul class="text-sm text-(--third-text-color) mb-4 list-disc list-inside space-y-1">
+                <li>All transactions associated with this account</li>
+                <li>All balance history for this account</li>
+                <li>All trades involving this account</li>
+                <li>The bank connection (if synced)</li>
+            </ul>
+            <p class="text-sm text-red-600 dark:text-red-400 font-medium mb-6">
+                This action cannot be undone.
+            </p>
+            <div class="flex gap-3 justify-end">
+                <button type="button" onclick="closeDeleteAccountModal()"
+                        class="px-4 py-2 bg-(--third-bg-color) text-(--first-text-color) rounded-lg text-sm font-medium hover:bg-(--second-bg-color) transition-colors">
+                    Cancel
+                </button>
+                <button type="button" onclick="confirmDeleteAccount()"
+                        class="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors">
+                    Delete Account
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
     /**
      * Append the browser's UTC offset to a datetime-local string so the server
@@ -635,11 +705,22 @@
     var pendingDeleteAccountName = null;
 
     function deleteAccount(accountId, accountName) {
-        if (!confirm('Are you sure you want to delete "' + accountName + '"? This will permanently remove all associated transactions and cannot be undone.')) {
-            return;
-        }
+        pendingDeleteAccountId = accountId;
+        pendingDeleteAccountName = accountName;
+        document.getElementById('deleteAccountName').textContent = accountName;
+        document.getElementById('deleteAccountModal').classList.remove('hidden');
+    }
+
+    function closeDeleteAccountModal() {
+        document.getElementById('deleteAccountModal').classList.add('hidden');
+        pendingDeleteAccountId = null;
+        pendingDeleteAccountName = null;
+    }
+
+    function confirmDeleteAccount() {
+        if (!pendingDeleteAccountId) return;
         
-        fetch('/bank/account/' + accountId + '/delete/', {
+        fetch('/bank/account/' + pendingDeleteAccountId + '/delete/', {
             method: 'POST',
             headers: {'X-CSRFToken': '{{ csrf_token }}'}
         }).then(function(r) {
@@ -654,12 +735,21 @@
     }
 
     function triggerSync(accountId) {
-        var btn = document.querySelector('#sync-row-' + accountId + ' .sync-btn');
-        var badge = document.querySelector('#sync-row-' + accountId + ' .sync-badge');
-        
+        var row = document.getElementById('sync-row-' + accountId);
+        var btn = row.querySelector('.sync-btn');
         btn.disabled = true;
-        badge.textContent = 'Syncing...';
-        badge.className = 'sync-badge text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+
+        // Set all sync badges in this account to syncing
+        row.querySelectorAll('.sync-badge').forEach(function(badge) {
+            var innerSpan = badge.querySelector('span');
+            if (innerSpan) {
+                innerSpan.textContent = 'Syncing...';
+                innerSpan.className = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 text-xs px-2 py-0.5 rounded-full';
+            } else {
+                badge.textContent = 'Syncing...';
+                badge.className = 'sync-badge text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+            }
+        });
 
         fetch('/bank/sync/' + accountId + '/', {
             method: 'POST',
@@ -674,34 +764,236 @@
             fetch('/bank/sync/' + accountId + '/status/').then(function(r) {
                 return r.json();
             }).then(function(data) {
-                var badge = document.querySelector('#sync-row-' + accountId + ' .sync-badge');
-                var btn = document.querySelector('#sync-row-' + accountId + ' .sync-btn');
-                
-                if (data.sync_status === 'syncing') {
+                var row = document.getElementById('sync-row-' + accountId);
+                var btn = row.querySelector('.sync-btn');
+                var assets = data.account_assets || [];
+
+                var anySyncing = assets.some(function(a) { return a.sync_status === 'syncing'; });
+
+                if (anySyncing) {
                     pollSync(accountId);
-                } else if (data.sync_status === 'success' || data.sync_status === 'idle') {
-                    badge.textContent = 'Synced';
-                    badge.className = 'sync-badge text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-                    btn.disabled = false;
-                    // Reload page to update rate limits
-                    setTimeout(function() { location.reload(); }, 1000);
-                } else if (data.sync_status === 'error') {
-                    badge.textContent = 'Error';
-                    badge.className = 'sync-badge text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
-                    btn.disabled = false;
-                    // Reload page to show error message in UI (no popup)
-                    setTimeout(function() { location.reload(); }, 500);
+                    return;
                 }
+
+                // Sync finished -- update UI and notify
+                assets.forEach(function(a) {
+                    updateAccountAssetUI(a);
+                });
+
+                var errors = assets.filter(function(a) { return a.last_sync_error; });
+                if (errors.length > 0) {
+                    errors.forEach(function(a) {
+                        showToast('Sync failed' + (a.asset_code ? ' (' + a.asset_code + ')' : '') + ': ' + a.last_sync_error, 'error');
+                    });
+                } else {
+                    showToast('Sync completed successfully', 'success');
+                }
+
+                btn.disabled = false;
+                manageSyncButtonState();
             });
         }, 2000);
     }
 
-    // Auto-poll for any accounts currently syncing on page load
+    function updateAccountAssetUI(assetData) {
+        var badgeClasses, badgeText;
+        if (assetData.sync_status === 'syncing') {
+            badgeClasses = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+            badgeText = 'Syncing...';
+        } else {
+            badgeClasses = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+            badgeText = 'Idle';
+        }
+
+        // Update sync badges
+        var badges = document.querySelectorAll('.sync-badge[data-aa-id="' + assetData.id + '"]');
+        badges.forEach(function(badge) {
+            var innerSpan = badge.querySelector('span');
+            if (innerSpan) {
+                innerSpan.className = badgeClasses + ' text-xs px-2 py-0.5 rounded-full';
+                innerSpan.textContent = badgeText;
+            } else {
+                badge.className = 'sync-badge text-xs px-2 py-0.5 rounded-full ' + badgeClasses;
+                badge.textContent = badgeText;
+            }
+        });
+
+        // Update rate limit info
+        if (!assetData.account_success_limit) return;
+        var remaining = assetData.account_success_remaining || 0;
+        var limit = assetData.account_success_limit || 1;
+        var percentage = Math.round((remaining / limit) * 100);
+
+        // Find rate limit container: .aa-row for multi-asset, parent sync-row for single-asset
+        var rateContainer = document.querySelector('.aa-row[data-aa-id="' + assetData.id + '"]');
+        if (!rateContainer) {
+            var anyBadge = badges[0] || document.querySelector('[data-aa-id="' + assetData.id + '"]');
+            if (anyBadge) {
+                rateContainer = anyBadge.closest('[id^="sync-row-"]');
+            }
+        }
+        if (!rateContainer) return;
+
+        var rateText = rateContainer.querySelector('[data-rate-text]');
+        if (rateText) {
+            rateText.textContent = remaining + '/' + limit;
+        }
+
+        // Find progress bar parent, then the child (works even if rate-limit-bar class doesn't exist yet)
+        var barParent = rateContainer.querySelector('.w-16.bg-\\(--third-bg-color\\).rounded-full');
+        if (barParent) {
+            var progressBar = barParent.firstElementChild;
+            if (progressBar) {
+                // Ensure it has the rate-limit-bar class and proper styling
+                progressBar.className = 'rate-limit-bar h-1.5 rounded-full transition-all';
+                progressBar.setAttribute('data-remaining', remaining);
+                progressBar.setAttribute('data-limit', limit);
+                progressBar.style.width = percentage + '%';
+
+                if (percentage > 50) {
+                    progressBar.classList.add('bg-green-500');
+                } else if (percentage > 20) {
+                    progressBar.classList.add('bg-yellow-500');
+                } else {
+                    progressBar.classList.add('bg-red-500');
+                }
+            }
+        }
+
+        if (assetData.account_success_reset) {
+            var countdown = rateContainer.querySelector('.reset-countdown');
+            if (!countdown) {
+                // Countdown doesn't exist yet (newly connected account) - create it
+                // Find the countdown parent: the last text div in the rate limit section
+                var textDivs = rateContainer.querySelectorAll('.text-sm.text-\\(--third-text-color\\).whitespace-nowrap');
+                var countdownParent = textDivs[textDivs.length - 1];
+                if (countdownParent) {
+                    countdownParent.textContent = '- resets in: ';
+                    countdown = document.createElement('span');
+                    countdown.className = 'reset-countdown font-semibold';
+                    countdown.textContent = '-';
+                    countdownParent.appendChild(countdown);
+                }
+            }
+            if (countdown) {
+                countdown.setAttribute('data-reset-time', assetData.account_success_reset);
+            }
+        }
+    }
+
+    function manageSyncButtonState() {
+        document.querySelectorAll('[id^="sync-btn-"]').forEach(function(btn) {
+            var accountId = btn.id.replace('sync-btn-', '');
+            var row = document.getElementById('sync-row-' + accountId);
+            var rateBars = row.querySelectorAll('.rate-limit-bar[data-remaining]');
+            var anyZeroRemaining = false;
+            var resetTimes = [];
+
+            rateBars.forEach(function(bar) {
+                var remaining = parseInt(bar.getAttribute('data-remaining') || '0');
+                if (remaining === 0) {
+                    anyZeroRemaining = true;
+                    var container = bar.closest('.aa-row') || row;
+                    var resetEl = container.querySelector('.reset-countdown[data-reset-time]');
+                    if (resetEl) {
+                        resetTimes.push(new Date(resetEl.getAttribute('data-reset-time')));
+                    }
+                }
+            });
+
+            if (anyZeroRemaining) {
+                btn.disabled = true;
+
+                var earliestReset = resetTimes.length > 0
+                    ? new Date(Math.min.apply(null, resetTimes))
+                    : null;
+
+                if (!btn.hasAttribute('data-tooltip-setup')) {
+                    btn.setAttribute('data-tooltip-setup', 'true');
+                    btn.setAttribute('title', '');
+
+                    btn.addEventListener('mouseenter', function() {
+                        updateSyncButtonTooltip(btn, earliestReset);
+                    });
+                }
+            }
+        });
+    }
+
+    function updateSyncButtonTooltip(btn, resetTime) {
+        if (!resetTime) {
+            btn.setAttribute('title', 'No API calls remaining');
+            return;
+        }
+        
+        var now = new Date();
+        var diff = Math.floor((resetTime - now) / 1000);
+        
+        if (diff <= 0) {
+            btn.setAttribute('title', 'Sync will be available now (refresh page)');
+        } else {
+            var hours = Math.floor(diff / 3600);
+            var minutes = Math.floor((diff % 3600) / 60);
+            var seconds = diff % 60;
+            
+            var timeStr;
+            if (hours > 0) {
+                timeStr = hours + 'h ' + minutes + 'm';
+            } else if (minutes > 0) {
+                timeStr = minutes + 'm ' + seconds + 's';
+            } else {
+                timeStr = seconds + 's';
+            }
+            
+            btn.setAttribute('title', 'Sync will be available in ' + timeStr);
+        }
+    }
+
+    function setupSyncButtonTooltipUpdates() {
+        // Update tooltips every second
+        setInterval(function() {
+            document.querySelectorAll('[id^="sync-btn-"]').forEach(function(btn) {
+                if (btn.disabled && btn.hasAttribute('data-tooltip-setup')) {
+                    var accountId = btn.id.replace('sync-btn-', '');
+                    var row = document.getElementById('sync-row-' + accountId);
+                    var resetEls = row.querySelectorAll('[data-reset-time]');
+                    
+                    var resetTimes = [];
+                    resetEls.forEach(function(el) {
+                        resetTimes.push(new Date(el.getAttribute('data-reset-time')));
+                    });
+                    
+                    if (resetTimes.length > 0) {
+                        var earliestReset = new Date(Math.min.apply(null, resetTimes));
+                        
+                        // Update tooltip if user is hovering
+                        if (btn.matches(':hover')) {
+                            updateSyncButtonTooltip(btn, earliestReset);
+                        }
+                        
+                        // Check if sync should be re-enabled
+                        var now = new Date();
+                        if (earliestReset <= now) {
+                            btn.disabled = false;
+                            btn.removeAttribute('data-tooltip-setup');
+                            btn.removeAttribute('title');
+                        }
+                    }
+                }
+            });
+        }, 1000);
+    }
     document.addEventListener('DOMContentLoaded', function() {
+        var pollingAccounts = {};
         {% for account in all_accounts %}
-        {% if account.is_synced and account.sync_status == 'syncing' %}
-        pollSync({{ account.id }});
+        {% for aa in account.account_assets.all %}
+        {% if aa.sync_status == 'syncing' %}
+        if (!pollingAccounts[{{ account.id }}]) {
+            pollingAccounts[{{ account.id }}] = true;
+            pollSync({{ account.id }});
+        }
         {% endif %}
+        {% endfor %}
         {% endfor %}
 
         // Update countdown timers
@@ -710,14 +1002,14 @@
                 var resetTime = new Date(el.getAttribute('data-reset-time'));
                 var now = new Date();
                 var diff = Math.floor((resetTime - now) / 1000);
-                
+
                 if (diff <= 0) {
                     el.textContent = 'now (refresh page)';
                 } else {
                     var hours = Math.floor(diff / 3600);
                     var minutes = Math.floor((diff % 3600) / 60);
                     var seconds = diff % 60;
-                    
+
                     if (hours > 0) {
                         el.textContent = hours + 'h ' + minutes + 'm';
                     } else if (minutes > 0) {
@@ -728,18 +1020,47 @@
                 }
             });
         }
-        
+
+        function updateLastSyncTimes() {
+            document.querySelectorAll('.last-sync-time').forEach(function(el) {
+                var syncTime = new Date(el.getAttribute('data-sync-time'));
+                var now = new Date();
+                var diff = Math.floor((now - syncTime) / 1000);
+
+                if (diff < 60) {
+                    el.textContent = 'just now';
+                } else if (diff < 3600) {
+                    var minutes = Math.floor(diff / 60);
+                    el.textContent = minutes + 'm ago';
+                } else if (diff < 86400) {
+                    var hours = Math.floor(diff / 3600);
+                    el.textContent = hours + 'h ago';
+                } else {
+                    var days = Math.floor(diff / 86400);
+                    el.textContent = days + 'd ago';
+                }
+            });
+        }
+
         updateCountdowns();
-        setInterval(updateCountdowns, 1000);
+        updateLastSyncTimes();
+        setInterval(function() {
+            updateCountdowns();
+            updateLastSyncTimes();
+        }, 1000);
+
+        // Set up sync button state management
+        manageSyncButtonState();
+        setupSyncButtonTooltipUpdates();
 
         // Set up rate limit progress bars
         document.querySelectorAll('.rate-limit-bar').forEach(function(bar) {
             var remaining = parseInt(bar.getAttribute('data-remaining') || '0');
             var limit = parseInt(bar.getAttribute('data-limit') || '1');
             var percentage = Math.round((remaining / limit) * 100);
-            
+
             bar.style.width = percentage + '%';
-            
+
             if (percentage > 50) {
                 bar.classList.add('bg-green-500');
             } else if (percentage > 20) {
@@ -780,7 +1101,6 @@
         var amountValue = document.getElementById('txnAmount').value;
         var datetime = document.getElementById('txnDatetime').value;
         var category = document.getElementById('txnCategory').value;
-        var influencesBalance = document.getElementById('txnInfluencesBalance').checked ? '1' : '0';
         var isIncoming = document.getElementById('txnTypeToggle').checked;
 
         if (!accountId || !assetCode || !entity || !amountValue || !datetime) {
@@ -800,7 +1120,6 @@
         formData.append('amount', amount);
         formData.append('datetime', withBrowserTzOffset(datetime));
         formData.append('category', category);
-        formData.append('influences_balance', influencesBalance);
 
         fetch('/account/' + accountId + '/asset/' + assetCode + '/transactions/add/', {
             method: 'POST',
@@ -815,7 +1134,7 @@
                 showToast(data.error || 'Failed to add transaction', 'error');
             }
         }).catch(function(err) {
-            showToast('An error occurred', 'error');
+            showToast(err.message || String(err), 'error');
         });
     });
 
@@ -842,7 +1161,7 @@
                 showToast(data.error || 'Failed to delete transaction', 'error');
             }
         }).catch(function(err) {
-            showToast('An error occurred', 'error');
+            showToast(err.message || String(err), 'error');
         });
     }
 
@@ -958,7 +1277,7 @@
                 showToast(data.error || 'Failed to add trade', 'error');
             }
         }).catch(function(err) {
-            showToast('An error occurred', 'error');
+            showToast(err.message || String(err), 'error');
         });
     });
 
@@ -983,13 +1302,17 @@
                 showToast(data.error || 'Failed to delete trade', 'error');
             }
         }).catch(function(err) {
-            showToast('An error occurred', 'error');
+            showToast(err.message || String(err), 'error');
         });
     }
 
     // ESC key to close modals
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
+            var deleteModal = document.getElementById('deleteAccountModal');
+            if (deleteModal && !deleteModal.classList.contains('hidden')) {
+                closeDeleteAccountModal();
+            }
             var txnModal = document.getElementById('addTransactionModal');
             if (txnModal && !txnModal.classList.contains('hidden')) {
                 hideAddTransactionModal();
@@ -1000,6 +1323,16 @@
             }
         }
     });
+
+    // Click outside to close delete modal (set up after DOM is ready)
+    var deleteModalEl = document.getElementById('deleteAccountModal');
+    if (deleteModalEl) {
+        deleteModalEl.addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeDeleteAccountModal();
+            }
+        });
+    }
     </script>
     <style>
         .account-tag {

@@ -20,7 +20,7 @@ from django.contrib import messages
 from django.db import transaction
 from django.db import IntegrityError
 from django.views.generic import TemplateView, ListView
-from django.db.models import Count
+from django.db.models import Count, Min
 from django.urls import reverse
 from django.http import Http404, JsonResponse
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -621,11 +621,12 @@ class AssetsView(LoginRequiredMixin, TemplateView):
         )
 
         # Calculate current values
+        today = timezone.localdate()
         accounts_items_df["current_price"] = accounts_items_df.apply(
             lambda x: get_prices_daily(
                 x["asset"],
                 settings.BASE_CURRENCY["code"],
-                datetime.datetime.now().date(),
+                today,
             ),
             axis=1,
         )
@@ -950,13 +951,13 @@ class AccountsView(LoginRequiredMixin, TemplateView):
             "slices": acct_slices,
             "baseCurrency": settings.BASE_CURRENCY["symbol"],
             "hole": 0.6,
-            "layout": "legend-right",
+            "layout": "labels-outside",
         })
         context["accounts_country_donut_data"] = json.dumps({
             "slices": country_slices,
             "baseCurrency": settings.BASE_CURRENCY["symbol"],
             "hole": 0.6,
-            "layout": "legend-right",
+            "layout": "labels-outside",
         })
         context["accounts_donut_has_slices"] = len(acct_slices) > 0
         context["accounts_country_donut_has_slices"] = len(country_slices) > 0
@@ -1277,11 +1278,12 @@ class SyncAccountView(LoginRequiredMixin, View):
 
 
 class SyncStatusView(LoginRequiredMixin, View):
-    """Poll endpoint for sync status of an account."""
+    """Poll endpoint for sync status of an account's AccountAssets."""
     login_url = "login"
 
     def get(self, request, *args, **kwargs):
         from django.http import JsonResponse
+        from main.models import AccountAsset
 
         account_id = kwargs.get("account_id")
         try:
@@ -1289,13 +1291,30 @@ class SyncStatusView(LoginRequiredMixin, View):
         except Account.DoesNotExist:
             return JsonResponse({"error": "Account not found"}, status=404)
 
+        account_assets = AccountAsset.objects.filter(
+            account=account,
+        ).select_related("asset")
+
         return JsonResponse({
-            "sync_status": account.sync_status,
-            "sync_error": account.sync_error,
-            "last_successful_sync": (
-                account.last_successful_sync.isoformat()
-                if account.last_successful_sync else None
-            ),
+            "account_assets": [
+                {
+                    "id": aa.pk,
+                    "asset_code": aa.asset.code if aa.asset else None,
+                    "sync_status": aa.sync_status,
+                    "last_successful_sync": (
+                        aa.last_successful_sync.isoformat()
+                        if aa.last_successful_sync else None
+                    ),
+                    "last_sync_error": aa.last_sync_error,
+                    "account_success_remaining": aa.account_success_remaining,
+                    "account_success_limit": aa.account_success_limit,
+                    "account_success_reset": (
+                        aa.account_success_reset.isoformat()
+                        if aa.account_success_reset else None
+                    ),
+                }
+                for aa in account_assets
+            ],
         })
 
 
@@ -1402,7 +1421,9 @@ class ConfigurationView(LoginRequiredMixin, TemplateView):
 
         # Get all accounts (both synced and manual) with theme-adjusted dot colors
         all_accounts = list(
-            Account.objects.filter(user=self.request.user).order_by("name")
+            Account.objects.filter(user=self.request.user)
+            .prefetch_related("account_assets__asset")
+            .order_by("name")
         )
 
         def _theme_account_color(hex_color, s_change, l_change):
@@ -1436,17 +1457,23 @@ class ConfigurationView(LoginRequiredMixin, TemplateView):
         
         # Load data for transactions tab
         if active_tab == "transactions":
-            # Get all fiat assets for filter dropdown
-            context["fiat_assets"] = Asset.objects.filter(asset_class__name="Fiat Currencies").order_by("code")
-            
+            # Assets that have a balance on at least one manual account (for picklist and filter)
+            context["assets_with_balance"] = Asset.objects.filter(
+                accountasset__account__user=self.request.user,
+                accountasset__account__requisition_id__isnull=True,
+            ).distinct().order_by("code")
+
             # Get all user accounts (manual only) for filter dropdown
-            context["user_accounts"] = Account.objects.filter(user=self.request.user, gocardless_code__isnull=True).order_by("name")
+            context["user_accounts"] = Account.objects.filter(user=self.request.user, requisition_id__isnull=True).order_by("name")
             
-            # Get filtered transactions
+            # Get filtered transactions (manual accounts only)
             account_filter = self.request.GET.get("account")
             asset_filter = self.request.GET.get("asset")
             
-            txns = Transaction.objects.filter(account__user=self.request.user).select_related("account", "asset")
+            txns = Transaction.objects.filter(
+                account__user=self.request.user,
+                account__requisition_id__isnull=True,
+            ).select_related("account", "asset")
             
             if account_filter:
                 txns = txns.filter(account_id=account_filter)
@@ -1460,7 +1487,7 @@ class ConfigurationView(LoginRequiredMixin, TemplateView):
         # Load data for trades tab
         elif active_tab == "trades":
             # Get all user accounts (manual only) for filter dropdown
-            context["user_accounts"] = Account.objects.filter(user=self.request.user, gocardless_code__isnull=True).order_by("name")
+            context["user_accounts"] = Account.objects.filter(user=self.request.user, requisition_id__isnull=True).order_by("name")
             context["all_assets"] = Asset.objects.order_by("code")
             
             # Get filtered trades
@@ -1563,7 +1590,7 @@ class ManageAccountAssetsView(LoginRequiredMixin, TemplateView):
         # Get established assets with their latest balance via AccountAsset
         from main.models import AccountAsset
         
-        account_assets = AccountAsset.objects.filter(account=account).select_related("asset")
+        account_assets = AccountAsset.objects.filter(account=account, asset__isnull=False).select_related("asset")
         established_codes = [aa.asset.code for aa in account_assets]
         
         established_assets = []
@@ -1700,7 +1727,7 @@ class CorrectBalanceView(LoginRequiredMixin, View):
                 if BalanceHistory.objects.filter(account=account, asset=asset, balance__lt=0).exists():
                     raise ValidationError("Balance correction would cause negative historical balances")
         except ValidationError as exc:
-            return JsonResponse({"success": False, "error": str(exc.message)}, status=400)
+            return JsonResponse({"success": False, "error": str(exc)}, status=400)
 
         return JsonResponse({"success": True})
 
@@ -1791,7 +1818,6 @@ class AddTransactionView(LoginRequiredMixin, View):
         amount_str = request.POST.get("amount", "").strip()
         datetime_str = request.POST.get("datetime", "").strip()
         category = request.POST.get("category", "").strip() or None
-        influences_balance = request.POST.get("influences_balance", "1") == "1"
 
         if not entity:
             return JsonResponse({"success": False, "error": "From/to is required"}, status=400)
@@ -1821,12 +1847,6 @@ class AddTransactionView(LoginRequiredMixin, View):
         except Exception:
             return JsonResponse({"success": False, "error": "Invalid datetime format"}, status=400)
 
-        txn_date = transaction_datetime.date()
-        
-        # Check if date is in the future (compare dates only to avoid timezone confusion)
-        if txn_date > datetime.date.today():
-            return JsonResponse({"success": False, "error": "Transaction date cannot be in the future"}, status=400)
-
         try:
             svc = TransactionService()
             svc.create_transaction_with_balance_update(
@@ -1836,7 +1856,6 @@ class AddTransactionView(LoginRequiredMixin, View):
                 datetime_obj=transaction_datetime,
                 asset=asset,
                 category=category,
-                influences_balance=influences_balance,
                 is_trade_side=False,
                 paired_transaction=None,
             )
@@ -1924,10 +1943,6 @@ class AddTradeView(LoginRequiredMixin, View):
             return JsonResponse({"success": False, "error": "Invalid datetime format"}, status=400)
         
         trade_date = trade_datetime.date()
-        
-        # Check if date is in the future
-        if trade_date > datetime.date.today():
-            return JsonResponse({"success": False, "error": "Trade date cannot be in the future"}, status=400)
         
         # Validate assets exist
         try:
@@ -2029,7 +2044,6 @@ class AddTradeView(LoginRequiredMixin, View):
                 datetime_obj=trade_datetime,
                 asset=from_asset,
                 category=None,
-                influences_balance=True,
                 is_trade_side=True,
                 paired_transaction=None,
             )
@@ -2042,7 +2056,6 @@ class AddTradeView(LoginRequiredMixin, View):
                 datetime_obj=trade_datetime,
                 asset=to_asset,
                 category=None,
-                influences_balance=True,
                 is_trade_side=True,
                 paired_transaction=txn1,
             )

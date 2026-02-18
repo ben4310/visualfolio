@@ -85,39 +85,23 @@ class CustomUser(AbstractUser):
         help_text="IANA timezone for date/time display and input",
     )
 
-class Account(models.Model):
-    SYNC_STATUS_CHOICES = [
-        ("idle", "Idle"),
-        ("syncing", "Syncing"),
-        ("success", "Success"),
-        ("error", "Error"),
-    ]
 
+class Account(models.Model):
     id = models.AutoField(primary_key=True)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     country = models.CharField(max_length=255, choices=COUNTRY_CHOICES)
-    gocardless_code = models.UUIDField(blank=True, null=True, unique=True)  # Requisition ID for new accounts, Account ID for legacy
+    requisition_id = models.UUIDField(blank=True, null=True, unique=True)
     color = models.CharField(max_length=7, default="#4b8dd3")
 
-    # GoCardless-specific fields (populated at link time, null for manual accounts)
+    # GoCardless requisition-level fields (populated at link time, null for manual accounts)
     gocardless_institution_id = models.CharField(max_length=64, blank=True, null=True)
     transaction_total_days = models.PositiveIntegerField(blank=True, null=True)
-    last_successful_sync = models.DateTimeField(blank=True, null=True)
     access_expires_at = models.DateTimeField(blank=True, null=True)
-
-    # Sync status tracking
-    sync_status = models.CharField(max_length=10, choices=SYNC_STATUS_CHOICES, default="idle")
-    sync_error = models.TextField(blank=True, null=True)
-
-    # Per-account rate limits (GoCardless account-success limits for data fetching)
-    account_success_limit = models.PositiveIntegerField(blank=True, null=True)
-    account_success_remaining = models.PositiveIntegerField(blank=True, null=True)
-    account_success_reset = models.DateTimeField(blank=True, null=True)
 
     @property
     def is_synced(self):
-        return self.gocardless_code is not None
+        return self.requisition_id is not None
 
     class Meta:
         constraints = [
@@ -133,26 +117,52 @@ class AccountAsset(models.Model):
     Links an Account to an Asset, storing external provider metadata.
     
     For GoCardless synced accounts: stores the GoCardless account ID (their
-    internal identifier for each account-currency combination).
+    internal identifier for each account-currency combination). The asset may
+    be NULL initially if the currency cannot be determined at link time; it
+    will be resolved during the first sync. Sync operational status and rate
+    limits are tracked per AccountAsset since each corresponds to a distinct
+    GoCardless account with its own API quotas.
     
     For manual accounts: exists only to track which assets have been established
     on the account (no gocardless_account_id).
     """
+
+    SYNC_STATUS_CHOICES = [
+        ("idle", "Idle"),
+        ("syncing", "Syncing"),
+    ]
+
     id = models.AutoField(primary_key=True)
     account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name='account_assets')
-    asset = models.ForeignKey(Asset, on_delete=models.PROTECT)
+    asset = models.ForeignKey(Asset, on_delete=models.PROTECT, null=True, blank=True)
     gocardless_account_id = models.CharField(max_length=64, blank=True, null=True)
-    
+
+    # Sync operational status tracking (per GoCardless account)
+    sync_status = models.CharField(max_length=10, choices=SYNC_STATUS_CHOICES, default="idle")
+    last_successful_sync = models.DateTimeField(blank=True, null=True)
+    last_sync_error = models.TextField(blank=True, null=True)
+
+    # Per-account rate limits (GoCardless account-success limits for data fetching)
+    account_success_limit = models.PositiveIntegerField(blank=True, null=True)
+    account_success_remaining = models.PositiveIntegerField(blank=True, null=True)
+    account_success_reset = models.DateTimeField(blank=True, null=True)
+
     class Meta:
         constraints = [
             models.UniqueConstraint(
                 fields=['account', 'asset'],
                 name='unique_account_asset_pair',
-            )
+            ),
+            models.UniqueConstraint(
+                fields=['gocardless_account_id'],
+                condition=models.Q(gocardless_account_id__isnull=False),
+                name='unique_gocardless_account_id',
+            ),
         ]
     
     def __str__(self):
-        return f"{self.account.name} - {self.asset.code}"
+        asset_code = self.asset.code if self.asset else "pending"
+        return f"{self.account.name} - {asset_code}"
 
 
 class TransactionManager(models.Manager):
@@ -193,9 +203,9 @@ class Transaction(models.Model):
     def clean(self):
         super().clean()
         if not self.is_trade_side and not self.entity:
-            raise ValidationError({"entity": "From/to is required for non-trade transactions."})
+            raise ValidationError({"entity": "From/to is required for transactions."})
         if not self.is_trade_side and self.asset and self.asset.asset_class_id != "Fiat Currencies":
-            raise ValidationError({"asset": "Transactions can only use fiat currency assets."})
+            raise ValidationError({"asset": "Transactions are currently only supported for FIAT currency assets."})
 
     def save(self, *args, **kwargs):
         self.full_clean()

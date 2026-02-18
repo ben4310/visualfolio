@@ -120,25 +120,6 @@ Transactions - {{ account.name }} - {{ asset.code }}
                        class="w-full px-3 py-2 text-sm text-(--first-text-color) bg-(--third-bg-color) border border-(--border-color) rounded-lg focus:outline-none focus:border-(--first-accent-color)">
             </div>
 
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                    <label class="inline-flex items-center cursor-pointer">
-                        <input type="checkbox" id="influencesBalanceToggle" class="sr-only peer" checked>
-                        <div class="relative w-11 h-6 bg-gray-200 dark:bg-gray-700 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-(--first-accent-color)"></div>
-                    </label>
-                    <span class="text-xs font-medium text-(--third-text-color)" id="influencesBalanceLabel">Influences balance</span>
-                    <div class="relative group">
-                        <svg class="w-3.5 h-3.5 text-(--third-text-color) cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                        </svg>
-                        <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 px-3 py-2 text-xs text-(--first-text-color) bg-(--second-bg-color) border border-(--border-color) rounded-lg shadow-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-10">
-                            <strong>On:</strong> The transaction changes your current balance (e.g., a new payment just happened).<br><br>
-                            <strong>Off:</strong> Records a past transaction without changing your current balance. Earlier balances are adjusted retroactively (e.g., a forgotten transaction).
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <div id="formError" class="hidden text-sm text-red-600 dark:text-red-400"></div>
 
             <div class="flex gap-2 pt-2">
@@ -157,14 +138,26 @@ Transactions - {{ account.name }} - {{ asset.code }}
 </div>
 
 <script>
+/**
+ * Append the browser's UTC offset to a datetime-local string so the server
+ * receives an unambiguous, timezone-aware ISO 8601 value (e.g. "2026-02-17T22:37+01:00").
+ */
+function withBrowserTzOffset(datetimeLocalValue) {
+    var d = new Date(datetimeLocalValue);
+    var offsetMin = -d.getTimezoneOffset();
+    var sign = offsetMin >= 0 ? '+' : '-';
+    var abs = Math.abs(offsetMin);
+    var hh = String(Math.floor(abs / 60)).padStart(2, '0');
+    var mm = String(abs % 60).padStart(2, '0');
+    return datetimeLocalValue + sign + hh + ':' + mm;
+}
+
 function showAddTransactionModal() {
     document.getElementById('addTransactionModal').classList.remove('hidden');
     document.getElementById('addTransactionForm').reset();
     document.getElementById('formError').classList.add('hidden');
     document.getElementById('transactionTypeToggle').checked = false;
     document.getElementById('transactionTypeLabel').textContent = 'Outgoing';
-    document.getElementById('influencesBalanceToggle').checked = true;
-    document.getElementById('influencesBalanceLabel').textContent = 'Influences balance';
 }
 
 function hideAddTransactionModal() {
@@ -175,11 +168,6 @@ function hideAddTransactionModal() {
 document.getElementById('transactionTypeToggle').addEventListener('change', function() {
     const label = document.getElementById('transactionTypeLabel');
     label.textContent = this.checked ? 'Incoming' : 'Outgoing';
-});
-
-document.getElementById('influencesBalanceToggle').addEventListener('change', function() {
-    const label = document.getElementById('influencesBalanceLabel');
-    label.textContent = this.checked ? 'Influences balance' : 'Retroactive record';
 });
 
 // Handle form submission
@@ -214,8 +202,6 @@ document.getElementById('addTransactionForm').addEventListener('submit', async f
         return;
     }
 
-    const influencesBalance = document.getElementById('influencesBalanceToggle').checked;
-
     // Add to FormData
     formData.append('entity', entity);
     formData.append('amount', amount.toString());
@@ -223,7 +209,6 @@ document.getElementById('addTransactionForm').addEventListener('submit', async f
     if (category) {
         formData.append('category', category);
     }
-    formData.append('influences_balance', influencesBalance ? '1' : '0');
     formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
 
     try {

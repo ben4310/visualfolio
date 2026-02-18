@@ -8,11 +8,9 @@ and trade operations.
 import datetime
 from django.db import transaction
 from django.core.exceptions import ValidationError
-from django.conf import settings
 from django.db.models import F
 
 from main.models import Transaction, BalanceHistory
-from .calculation import BalanceCalculationService
 
 
 class TransactionService:
@@ -26,7 +24,6 @@ class TransactionService:
         datetime_obj,
         asset,
         category=None,
-        influences_balance=True,
         is_trade_side=False,
         paired_transaction=None
     ):
@@ -40,8 +37,6 @@ class TransactionService:
             datetime_obj: Transaction datetime (timezone-aware datetime object)
             asset: Asset model instance
             category: Optional category (string)
-            influences_balance: If True, applies delta forward (new transaction).
-                               If False, recalculates backward (retroactive).
             is_trade_side: If True, marks as part of a trade
             paired_transaction: Optional paired transaction for trades
         
@@ -66,9 +61,8 @@ class TransactionService:
             )
         
         with transaction.atomic():
-            # Delta mode only: if transaction is before earliest BH, backfill with flat balance
-            # (Retroactive mode handles this automatically via backward recalculation)
-            if influences_balance and txn_date < earliest_bh.date:
+            # If transaction is before earliest BH, backfill with flat balance
+            if txn_date < earliest_bh.date:
                 txns_on_earliest = Transaction.objects_extended.filter(
                     account=account, asset=asset,
                     datetime__date=earliest_bh.date,
@@ -79,6 +73,25 @@ class TransactionService:
                 while d < earliest_bh.date:
                     fill_entries.append(
                         BalanceHistory(account=account, asset=asset, date=d, balance=opening_balance)
+                    )
+                    d += datetime.timedelta(days=1)
+                BalanceHistory.objects.bulk_create(fill_entries)
+            
+            # Get latest BH for forward-fill check
+            latest_bh = (
+                BalanceHistory.objects
+                .filter(account=account, asset=asset)
+                .order_by("-date")
+                .first()
+            )
+            
+            # If transaction is after latest BH, forward-fill with last balance
+            if txn_date > latest_bh.date:
+                fill_entries = []
+                d = latest_bh.date + datetime.timedelta(days=1)
+                while d <= txn_date:
+                    fill_entries.append(
+                        BalanceHistory(account=account, asset=asset, date=d, balance=latest_bh.balance)
                     )
                     d += datetime.timedelta(days=1)
                 BalanceHistory.objects.bulk_create(fill_entries)
@@ -95,35 +108,10 @@ class TransactionService:
                 paired_transaction=paired_transaction,
             )
             
-            if influences_balance:
-                # Delta mode: propagate amount forward through BH
-                BalanceHistory.objects.filter(
-                    account=account, asset=asset, date__gte=txn_date,
-                ).update(balance=F("balance") + amount)
-            else:
-                # Retroactive mode: keep current balance, recalculate history backward
-                latest_bh = (
-                    BalanceHistory.objects
-                    .filter(account=account, asset=asset)
-                    .order_by("-date")
-                    .first()
-                )
-                all_txns = Transaction.objects_extended.filter(account=account, asset=asset)
-                svc = BalanceCalculationService()
-                # Extend back to full timespan
-                today = datetime.date.today()
-                start = today - datetime.timedelta(days=settings.BALANCE_HISTORY_TIMESPAN_DAYS)
-                new_history = svc.generate_balance_history_backward(
-                    transactions=all_txns,
-                    current_balance=latest_bh.balance,
-                    start_date=start,
-                    end_date=latest_bh.date,
-                )
-                BalanceHistory.objects.filter(account=account, asset=asset).delete()
-                BalanceHistory.objects.bulk_create([
-                    BalanceHistory(account=account, asset=asset, date=d, balance=b)
-                    for d, b in new_history.items()
-                ])
+            # Propagate amount forward through balance history
+            BalanceHistory.objects.filter(
+                account=account, asset=asset, date__gte=txn_date,
+            ).update(balance=F("balance") + amount)
             
             # Validate: no negative balances
             if BalanceHistory.objects.filter(account=account, asset=asset, balance__lt=0).exists():

@@ -27,8 +27,19 @@ erDiagram
     %% -------------------------
     CUSTOM_USER {
         Int id PK
+        DateTime last_update
         DateTime last_full_refresh
+        Char(10) sync_frequency
+        PositiveSmallInt sync_preferred_hour
+        DateTime last_auto_sync
+        Char(10) theme
+        Char(63) user_timezone
         %% plus AbstractUser fields (username, email, password, etc.)
+        %% sync_frequency choices: manual, 6h, 12h, 24h (default: 24h)
+        %% sync_preferred_hour: 0-23, default 5
+        %% theme choices: system, light, dark (default: system)
+        %% user_timezone: IANA timezone, default UTC
+        %% All timestamp fields are nullable
     }
 
     %% -------------------------
@@ -38,42 +49,43 @@ erDiagram
         Int id PK
         Char(255) name
         Char(255) country
-        UUID gocardless_code
+        UUID requisition_id
         Char(7) color
         Char(64) gocardless_institution_id
         Int transaction_total_days
-        DateTime last_successful_sync
         DateTime access_expires_at
-        Char(10) sync_status
-        Text sync_error
-        Int account_success_limit
-        Int account_success_remaining
-        DateTime account_success_reset
         %% FK to CustomUser(id)
-        %% gocardless_code is nullable and unique
+        %% requisition_id is nullable and unique
         %% gocardless_institution_id is nullable
         %% transaction_total_days is nullable
-        %% last_successful_sync is nullable
         %% access_expires_at is nullable
-        %% sync_status choices: idle, syncing, success, error (default: idle)
-        %% sync_error is nullable
-        %% account_success_limit is nullable
-        %% account_success_remaining is nullable
-        %% account_success_reset is nullable
         %% unique(name, user)
     }
 
     %% -------------------------
     %% ENTITY: AccountAsset
-    %% Links Account to Asset, stores GoCardless metadata
+    %% Links Account to Asset, stores GoCardless metadata and sync state
     %% -------------------------
     ACCOUNT_ASSET {
         Int id PK
         Char(64) gocardless_account_id
+        Char(10) sync_status
+        DateTime last_successful_sync
+        Text last_sync_error
+        Int account_success_limit
+        Int account_success_remaining
+        DateTime account_success_reset
         %% FK to Account(id)
         %% FK to Asset(code)
-        %% gocardless_account_id is nullable
+        %% gocardless_account_id is nullable and unique
+        %% sync_status choices: idle, syncing (default: idle)
+        %% last_successful_sync is nullable
+        %% last_sync_error is nullable
+        %% account_success_limit is nullable
+        %% account_success_remaining is nullable
+        %% account_success_reset is nullable
         %% unique(account, asset)
+        %% unique(gocardless_account_id) when not null
     }
 
     %% -------------------------
@@ -88,15 +100,16 @@ erDiagram
         Char(31) category
         Boolean is_trade_side
         Int paired_transaction_id
-        %% amount cannot be zero
-        %% datetime cannot be in future
-        %% entity is required for non-trade transactions
         %% FK to Account(id)
         %% FK to Asset(code)
         %% FK to Transaction(id) via paired_transaction (self-reference)
+        %% amount cannot be zero (validator)
+        %% datetime cannot be in future (validator)
+        %% entity is required for non-trade transactions, nullable for trade sides
         %% category is nullable
         %% paired_transaction_id is nullable
         %% is_trade_side defaults to False, indexed
+        %% asset must be a Fiat Currency asset class
         %% Trade sides are linked via paired_transaction
     }
 
