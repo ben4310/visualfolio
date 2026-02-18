@@ -505,8 +505,8 @@ class AssetsView(LoginRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
-        # Get valid range dates
-        valid_range_start, valid_range_end = BalanceHistory.get_valid_range_dates(self.request.user)
+        # Get valid range dates (with virtual forward-fill to today)
+        valid_range_start, valid_range_end = BalanceHistory.get_valid_range_dates_with_forward_fill(self.request.user)
         
         # Check if we have enough data points
         has_enough_data = (
@@ -524,21 +524,14 @@ class AssetsView(LoginRequiredMixin, TemplateView):
             context["base_currency"] = settings.BASE_CURRENCY["symbol"]
             return context
 
-        # Get latest balances
-        balance_histories = BalanceHistory.get_valid_range_records(
-            self.request.user
-        ).values(
-            "account__name",
-            "account__color",
-            "account__country",
-            "balance",
-            "asset",
-            "date",
-            "asset__asset_class__name",
-            "asset__asset_class__color"
-        )
-
-        balance_histories_df = pd.DataFrame(list(balance_histories))
+        # Get latest balances (with virtual forward-fill to today)
+        balance_histories = BalanceHistory.get_valid_range_records_with_forward_fill(self.request.user)
+        balance_histories_df = pd.DataFrame(BalanceHistory.to_values(
+            balance_histories,
+            "account__name", "account__color", "account__country",
+            "balance", "asset", "date",
+            "asset__asset_class__name", "asset__asset_class__color",
+        ))
         balance_histories_df.rename(
             columns={
                 "account__name": "account",
@@ -587,20 +580,14 @@ class AssetsView(LoginRequiredMixin, TemplateView):
             index="date", columns=grouping_field, values="value"
         ).reset_index()
 
-        # Get latest balances
-        accounts_items = (
-            BalanceHistory.get_latest_valid_balances(self.request.user)
-        ).values(
-            "account__name",
-            "account__color",
-            "account__country",
-            "balance",
-            "asset",
-            "asset__name",
-            "asset__asset_class__name",
-            "asset__asset_class__color"
-        )
-        accounts_items_df = pd.DataFrame(list(accounts_items))
+        # Get latest balances (with virtual forward-fill to today)
+        accounts_items = BalanceHistory.get_latest_valid_balances_with_forward_fill(self.request.user)
+        accounts_items_df = pd.DataFrame(BalanceHistory.to_values(
+            accounts_items,
+            "account__name", "account__color", "account__country",
+            "balance", "asset", "asset__name",
+            "asset__asset_class__name", "asset__asset_class__color",
+        ))
         accounts_items_df.rename(
             columns={
                 "account__name": "account",
@@ -781,17 +768,13 @@ class AccountsView(LoginRequiredMixin, TemplateView):
         )
         all_accounts_df.drop(columns=["color", "country"], inplace=True)
 
-        # Latest balances (may be empty)
-        latest_balances = BalanceHistory.get_latest_valid_balances(
-            self.request.user
-        ).values(
-            "account__name",
-            "account__color",
-            "account__country",
-            "balance",
-            "asset",
+        # Latest balances (may be empty, with virtual forward-fill to today)
+        latest_balances = BalanceHistory.get_latest_valid_balances_with_forward_fill(self.request.user)
+        balances_list = BalanceHistory.to_values(
+            latest_balances,
+            "account__name", "account__color", "account__country",
+            "balance", "asset",
         )
-        balances_list = list(latest_balances)
 
         if balances_list:
             balances_df = pd.DataFrame(balances_list)
@@ -853,33 +836,50 @@ class AccountsView(LoginRequiredMixin, TemplateView):
             transactions_df["date"] = pd.to_datetime(
                 transactions_df["datetime"]
             ).dt.date
-            grouped = (
-                transactions_df.groupby(["account__name", "date"])
-                .agg(
-                    total_vol=("amount", lambda x: x.abs().sum()),
-                    total_incoming=("amount", lambda x: x[x > 0].sum()),
-                    total_outgoing=("amount", lambda x: -x[x < 0].sum()),
+            
+            today = timezone.localdate()
+            
+            # Calculate total volume per account
+            account_totals = transactions_df.groupby("account__name").agg(
+                total_vol=("amount", lambda x: x.abs().sum()),
+                total_incoming=("amount", lambda x: x[x > 0].sum()),
+                total_outgoing=("amount", lambda x: -x[x < 0].sum()),
+            ).reset_index()
+            
+            # Get first balance history date for each account (account active date)
+            balance_histories = BalanceHistory.objects.filter(
+                account__user=self.request.user
+            ).values("account__name").annotate(
+                first_balance_date=Min("date")
+            )
+            balance_dates_df = pd.DataFrame(list(balance_histories))
+            
+            if not balance_dates_df.empty:
+                account_totals = account_totals.merge(
+                    balance_dates_df,
+                    on="account__name",
+                    how="left"
                 )
-                .reset_index()
-            )
-            daily_agg = (
-                grouped.groupby("account__name")
-                .agg(
-                    avg_daily_volume=("total_vol", "mean"),
-                    avg_daily_incoming=("total_incoming", "mean"),
-                    avg_daily_outgoing=("total_outgoing", "mean"),
+                # Calculate days active from first balance history to today
+                account_totals["days_active"] = account_totals["first_balance_date"].apply(
+                    lambda x: (today - x).days + 1 if pd.notna(x) else 1
                 )
-                .reset_index()
-            )
-            daily_agg["avg_monthly_volume"] = daily_agg["avg_daily_volume"] * 30
-            daily_agg["avg_monthly_incoming"] = (
-                daily_agg["avg_daily_incoming"] * 30
-            )
-            daily_agg["avg_monthly_outgoing"] = (
-                daily_agg["avg_daily_outgoing"] * 30
-            )
+            else:
+                # Fallback: use first transaction date if no balance history
+                account_totals["days_active"] = 1
+            
+            # Calculate true average daily volume (includes days with no transactions)
+            account_totals["avg_daily_volume"] = account_totals["total_vol"] / account_totals["days_active"]
+            account_totals["avg_daily_incoming"] = account_totals["total_incoming"] / account_totals["days_active"]
+            account_totals["avg_daily_outgoing"] = account_totals["total_outgoing"] / account_totals["days_active"]
+            
+            # Convert to monthly average
+            account_totals["avg_monthly_volume"] = account_totals["avg_daily_volume"] * 30
+            account_totals["avg_monthly_incoming"] = account_totals["avg_daily_incoming"] * 30
+            account_totals["avg_monthly_outgoing"] = account_totals["avg_daily_outgoing"] * 30
+            
             account_sums = account_sums.merge(
-                daily_agg,
+                account_totals[["account__name", "avg_monthly_volume", "avg_monthly_incoming", "avg_monthly_outgoing"]],
                 left_on="account",
                 right_on="account__name",
                 how="left",
