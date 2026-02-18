@@ -142,8 +142,8 @@ class OverviewView(LoginRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
-        # Get valid range dates
-        valid_range_start, valid_range_end = BalanceHistory.get_valid_range_dates(self.request.user)
+        # Get valid range dates (with virtual forward-fill to today)
+        valid_range_start, valid_range_end = BalanceHistory.get_valid_range_dates_with_forward_fill(self.request.user)
         
         # Check if we have enough data points
         has_enough_data = (
@@ -159,13 +159,11 @@ class OverviewView(LoginRequiredMixin, TemplateView):
             context["graph_data"] = "{}"
             return context
 
-        # Get latest balances
-        latest_balances = (
-            BalanceHistory.get_latest_valid_balances(self.request.user)
-            .select_related("asset__asset_class")
-            .values("account", "asset", "balance")
-        )
-        balances_df = pd.DataFrame(list(latest_balances))
+        # Get latest balances (with virtual forward-fill to today)
+        latest_balances = BalanceHistory.get_latest_valid_balances_with_forward_fill(self.request.user)
+        balances_df = pd.DataFrame(BalanceHistory.to_values(
+            latest_balances, "account", "asset", "balance",
+        ))
 
         # Calculate current values
         today = timezone.localdate()
@@ -184,18 +182,13 @@ class OverviewView(LoginRequiredMixin, TemplateView):
         # Calculate totals
         total_asset_value = balances_df["current_value"].sum()
 
-        # Get users BalanceHistories
-        balance_histories = BalanceHistory.get_valid_range_records(
-            self.request.user
-        ).values(
-            "account__name",
-            "asset",
-            "asset__asset_class__name",
-            "asset__asset_class__color",
-            "balance",
-            "date",
-        )
-        balance_histories_df = pd.DataFrame(list(balance_histories))
+        # Get users BalanceHistories (with virtual forward-fill to today)
+        balance_histories = BalanceHistory.get_valid_range_records_with_forward_fill(self.request.user)
+        balance_histories_df = pd.DataFrame(BalanceHistory.to_values(
+            balance_histories,
+            "account__name", "asset", "asset__asset_class__name", "asset__asset_class__color",
+            "balance", "date",
+        ))
         balance_histories_df.rename(
             columns={
                 "account__name": "account",

@@ -300,6 +300,148 @@ class BalanceHistory(models.Model):
             date=valid_range_end
         )
 
+    @staticmethod
+    def to_values(instances, *fields):
+        """
+        Convert a list of model instances to a list of dicts, matching the format
+        produced by QuerySet.values().
+
+        Supports Django-style double-underscore FK traversal:
+          - Plain field names (e.g. "balance", "date") return the field value.
+          - FK field names without traversal (e.g. "account", "asset") return the FK id.
+          - Traversed FK paths (e.g. "account__name", "asset__asset_class__color")
+            follow the relation chain.
+        """
+        result = []
+        for instance in instances:
+            row = {}
+            for field in fields:
+                if "__" in field:
+                    parts = field.split("__")
+                    obj = instance
+                    for part in parts:
+                        obj = getattr(obj, part)
+                    row[field] = obj
+                else:
+                    row[field] = getattr(instance, f"{field}_id", getattr(instance, field))
+            result.append(row)
+        return result
+
+    @classmethod
+    def get_valid_range_dates_with_forward_fill(cls, user):
+        """
+        Like get_valid_range_dates(), but extends to today if all account-asset combinations
+        are merely timing-lagged (all have their last balance on the same date < today).
+
+        This allows views to show data up to today even if syncs haven't run yet, without
+        requiring physical DB writes that would break sync integrity.
+        """
+        valid_range_start, valid_range_end = cls.get_valid_range_dates(user)
+
+        if valid_range_end is None:
+            return None, None
+
+        today = timezone.localdate()
+        if valid_range_end >= today:
+            return valid_range_start, valid_range_end
+
+        # Check if all account-asset combinations have their latest balance on valid_range_end
+        # (meaning they're all timing-lagged together, not just some missing data)
+        n_all_combinations = cls.objects.filter(
+            account__user=user
+        ).values('account', 'asset').distinct().count()
+
+        combinations_at_end = cls.objects.filter(
+            account__user=user,
+            date=valid_range_end
+        ).values('account', 'asset').distinct().count()
+
+        if combinations_at_end == n_all_combinations:
+            return valid_range_start, today
+        else:
+            return valid_range_start, valid_range_end
+
+    @classmethod
+    def get_valid_range_records_with_forward_fill(cls, user):
+        """
+        Returns BalanceHistory instances within the valid date range, with virtual
+        forward-fill to today if appropriate.
+
+        Always returns list[BalanceHistory] with FKs preloaded. Virtual records are
+        unsaved model instances (never persisted to DB).
+        """
+        import datetime as dt
+
+        original_start, original_end = cls.get_valid_range_dates(user)
+        extended_start, extended_end = cls.get_valid_range_dates_with_forward_fill(user)
+
+        if extended_start is None:
+            return []
+
+        records = list(
+            cls.objects.filter(
+                account__user=user,
+                date__gte=extended_start,
+                date__lte=original_end,
+            ).select_related("account", "asset__asset_class")
+        )
+
+        if extended_end <= original_end:
+            return records
+
+        last_balances = {
+            (r.account_id, r.asset_id): r
+            for r in records if r.date == original_end
+        }
+
+        d = original_end + dt.timedelta(days=1)
+        while d <= extended_end:
+            for template in last_balances.values():
+                records.append(cls(
+                    account=template.account,
+                    asset=template.asset,
+                    date=d,
+                    balance=template.balance,
+                ))
+            d += dt.timedelta(days=1)
+
+        return records
+
+    @classmethod
+    def get_latest_valid_balances_with_forward_fill(cls, user):
+        """
+        Returns the latest BalanceHistory instances with forward-fill to today.
+        One record per account-asset combination at the extended end date.
+
+        Always returns list[BalanceHistory] with FKs preloaded.
+        """
+        valid_range_start, valid_range_end = cls.get_valid_range_dates_with_forward_fill(user)
+
+        if valid_range_start is None:
+            return []
+
+        physical_end = cls.get_valid_range_dates(user)[1]
+
+        physical_latest = list(
+            cls.objects.filter(
+                account__user=user,
+                date=physical_end,
+            ).select_related("account", "asset__asset_class")
+        )
+
+        if valid_range_end == physical_end:
+            return physical_latest
+
+        return [
+            cls(
+                account=record.account,
+                asset=record.asset,
+                date=valid_range_end,
+                balance=record.balance,
+            )
+            for record in physical_latest
+        ]
+
 
 '''
 << GoCardless integration models >>
