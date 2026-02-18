@@ -178,7 +178,9 @@ class GoCardlessClient:
                 )
 
             if resp.status_code in RETRYABLE_STATUS_CODES:
-                last_exception = GoCardlessAPIError(resp.status_code, "Server error", resp.text)
+                last_exception = GoCardlessAPIError(
+                    resp.status_code, "Server error", resp.text, dict(resp.headers)
+                )
                 logger.warning(
                     "Retryable error %d (attempt %d/%d): %s",
                     resp.status_code, attempt + 1, MAX_RETRIES, url,

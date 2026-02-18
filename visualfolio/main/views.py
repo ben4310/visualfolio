@@ -1268,7 +1268,7 @@ class SyncAccountView(LoginRequiredMixin, View):
                 # Another sync is already running - this is expected in race conditions
                 logger.info("Sync already in progress for account %s", account.pk)
             except Exception:
-                pass  # Error is written to account.sync_error by the service
+                pass  # Error will be shown via toast notification
 
         thread = threading.Thread(target=_run, daemon=True)
         thread.start()
@@ -1840,10 +1840,16 @@ class AddTransactionView(LoginRequiredMixin, View):
                 is_trade_side=False,
                 paired_transaction=None,
             )
+            return JsonResponse({"success": True})
         except ValidationError as exc:
-            return JsonResponse({"success": False, "error": str(exc.message)}, status=400)
-
-        return JsonResponse({"success": True})
+            if hasattr(exc, 'message_dict'):
+                errors = [f"{k}: {v[0] if isinstance(v, list) else v}" for k, v in exc.message_dict.items()]
+                error_msg = "; ".join(errors)
+            elif hasattr(exc, 'messages'):
+                error_msg = "; ".join(exc.messages)
+            else:
+                error_msg = str(exc)
+            return JsonResponse({"success": False, "error": error_msg}, status=400)
 
 
 class DeleteTransactionView(LoginRequiredMixin, View):
@@ -1863,10 +1869,16 @@ class DeleteTransactionView(LoginRequiredMixin, View):
         try:
             svc = TransactionService()
             svc.delete_transaction_with_balance_update(txn)
+            return JsonResponse({"success": True})
         except ValidationError as exc:
-            return JsonResponse({"success": False, "error": str(exc.message)}, status=400)
-
-        return JsonResponse({"success": True})
+            if hasattr(exc, 'message_dict'):
+                errors = [f"{k}: {v[0] if isinstance(v, list) else v}" for k, v in exc.message_dict.items()]
+                error_msg = "; ".join(errors)
+            elif hasattr(exc, 'messages'):
+                error_msg = "; ".join(exc.messages)
+            else:
+                error_msg = str(exc)
+            return JsonResponse({"success": False, "error": error_msg}, status=400)
 
 
 class AddTradeView(LoginRequiredMixin, View):
@@ -2039,10 +2051,16 @@ class AddTradeView(LoginRequiredMixin, View):
             txn1.paired_transaction = txn2
             txn1.save()
             
+            return JsonResponse({"success": True})
         except ValidationError as exc:
-            return JsonResponse({"success": False, "error": str(exc.message)}, status=400)
-        
-        return JsonResponse({"success": True})
+            if hasattr(exc, 'message_dict'):
+                errors = [f"{k}: {v[0] if isinstance(v, list) else v}" for k, v in exc.message_dict.items()]
+                error_msg = "; ".join(errors)
+            elif hasattr(exc, 'messages'):
+                error_msg = "; ".join(exc.messages)
+            else:
+                error_msg = str(exc)
+            return JsonResponse({"success": False, "error": error_msg}, status=400)
 
 
 class DeleteTradeView(LoginRequiredMixin, View):
@@ -2072,10 +2090,17 @@ class DeleteTradeView(LoginRequiredMixin, View):
             with transaction.atomic():
                 svc.delete_transaction_with_balance_update(txn)
                 svc.delete_transaction_with_balance_update(paired_txn)
+            
+            return JsonResponse({"success": True})
         except ValidationError as exc:
-            return JsonResponse({"success": False, "error": str(exc.message)}, status=400)
-        
-        return JsonResponse({"success": True})
+            if hasattr(exc, 'message_dict'):
+                errors = [f"{k}: {v[0] if isinstance(v, list) else v}" for k, v in exc.message_dict.items()]
+                error_msg = "; ".join(errors)
+            elif hasattr(exc, 'messages'):
+                error_msg = "; ".join(exc.messages)
+            else:
+                error_msg = str(exc)
+            return JsonResponse({"success": False, "error": error_msg}, status=400)
 
 
 def _build_timezone_choices():
