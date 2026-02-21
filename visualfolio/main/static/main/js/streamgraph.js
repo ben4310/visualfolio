@@ -12,26 +12,18 @@
     });
   }
 
-  function updateValueDisplays(totalValue, baseCurrency) {
-    var totalEl = document.getElementById("total-asset-value");
-    
-    if (totalEl) {
-      totalEl.textContent = fmtValue(totalValue) + " " + baseCurrency;
-    }
-  }
-
-  function resetValueDisplays(baseCurrency) {
-    var totalEl = document.getElementById("total-asset-value");
-    
-    if (totalEl && totalEl.dataset.default) {
-      totalEl.textContent = totalEl.dataset.default + " " + baseCurrency;
-    }
-  }
-
-  function displayDailyDetails(dateStr, transactions, trades, baseCurrency) {
+  function displayDailyDetails(dateStr, totalValue, baseCurrency, transactions, trades) {
+    var hoverTotalEl = document.getElementById("hover-total-value");
     var transactionsEl = document.getElementById("transactions-list");
     var tradesEl = document.getElementById("trades-list");
-    if (!transactionsEl || !tradesEl) return;
+    if (!hoverTotalEl || !transactionsEl || !tradesEl) return;
+
+    if (hoverTotalEl) {
+      hoverTotalEl.innerHTML =
+        "<div class='text-(--first-text-color) text-2xl font-normal'>" +
+        fmtValue(totalValue) + " " + baseCurrency +
+        "</div>";
+    }
 
     var MAX_ITEMS = 6;
 
@@ -46,24 +38,20 @@
       transactionsHtml = "<div class='space-y-3'>";
       sortedTransactions.forEach(function(txn) {
         transactionsHtml += 
-          "<div class='flex justify-between items-start gap-4'>" +
+          "<div class='flex justify-between items-start gap-3'>" +
           "<div class='flex-1 min-w-0'>" +
-          "<div class='font-medium text-(--first-text-color) truncate'>" + txn.entity + "</div>" +
-          (txn.category ? "<div class='text-xs text-(--third-text-color)'>" + txn.category + "</div>" : "") +
+          "<div class='text-sm text-(--first-text-color) truncate'>" + txn.entity + "</div>" +
           "</div>" +
-          "<div class='text-right flex-shrink-0'>" +
-          "<div class='" + (txn.amount > 0 ? "text-green-600" : "text-red-600") + " font-medium'>" +
+          "<div class='text-sm text-right flex-shrink-0'>" +
+          "<div class='text-sm " + (txn.amount > 0 ? "text-green-600" : "text-(--first-text-color)") + " font-medium'>" +
           (txn.amount > 0 ? "+" : "") + fmtValue(txn.amount) + " " + txn.asset +
-          "</div>" +
-          "<div class='text-xs text-(--third-text-color)'>" +
-          (txn.value > 0 ? "+" : "") + fmtValue(txn.value) + " " + baseCurrency +
           "</div>" +
           "</div>" +
           "</div>";
       });
       transactionsHtml += "</div>";
     } else {
-      transactionsHtml = "<div class='text-(--third-text-color) text-2xl'>—</div>";
+      transactionsHtml = "<div class='text-sm text-(--mid-bg-color)'>—</div>";
     }
     
     // Build trades list
@@ -81,13 +69,13 @@
         tradesHtml += 
           "<div class='flex justify-between items-start gap-4'>" +
           "<div class='flex-1 min-w-0'>" +
-          "<div class='text-(--first-text-color) font-medium'>" +
+          "<div class='text-sm text-(--first-text-color)'>" +
           fmtValue(trade.from_amount) + " " + trade.from_asset + " → " +
           fmtValue(trade.to_amount) + " " + trade.to_asset +
           "</div>" +
           "</div>" +
           "<div class='text-right flex-shrink-0'>" +
-          "<div class='text-xs text-(--third-text-color)'>" +
+          "<div class='text-sm text-(--third-text-color)'>" +
           "~" + fmtValue((trade.from_value + trade.to_value) / 2) + " " + baseCurrency +
           "</div>" +
           "</div>" +
@@ -95,7 +83,7 @@
       });
       tradesHtml += "</div>";
     } else {
-      tradesHtml = "<div class='text-(--third-text-color) text-2xl'>—</div>";
+      tradesHtml = "<div class='text-sm text-(--mid-bg-color)'>—</div>";
     }
     
     transactionsEl.innerHTML = transactionsHtml;
@@ -103,11 +91,15 @@
   }
 
   function clearDailyDetails() {
+    var hoverTotalEl = document.getElementById("hover-total-value");
     var transactionsEl = document.getElementById("transactions-list");
     var tradesEl = document.getElementById("trades-list");
+
+    var placeholderText = "<span class='italic text-(--mid-bg-color)'>Hover to display daily data</span>";
     
-    var placeholderText = "<span class='text-(--third-text-color) italic'>Hover over the chart to display daily data</span>";
-    
+    if (hoverTotalEl) {
+      hoverTotalEl.innerHTML = placeholderText;
+    }
     if (transactionsEl) {
       transactionsEl.innerHTML = placeholderText;
     }
@@ -310,6 +302,27 @@
       .attr("pointer-events", "none")
       .style("display", "none");
 
+    var hoverTooltip = g
+      .append("g")
+      .attr("pointer-events", "none")
+      .style("display", "none");
+    hoverTooltip
+      .append("rect")
+      .attr("x", -50)
+      .attr("y", 0)
+      .attr("width", 100)
+      .attr("height", 18)
+      .attr("rx", 4)
+      .attr("fill", "var(--second-bg-color)")
+      .attr("stroke", "var(--border-color)")
+      .attr("stroke-width", 1);
+    hoverTooltip
+      .append("text")
+      .attr("text-anchor", "middle")
+      .attr("y", 14)
+      .attr("fill", mainColor)
+      .style("font-size", "11px");
+
     var bisect = d3.bisector(function (d) { return d; }).left;
 
     g.append("rect")
@@ -336,20 +349,23 @@
           month: "short",
           day: "numeric",
         });
+        hoverTooltip
+          .attr("transform", "translate(" + sx + ",0)")
+          .select("text")
+          .text(dateStr);
+        hoverTooltip.style("display", null);
 
         // Cap the data index to the original data length (before we added the extra day)
         var dataIdx = Math.min(idx, data.dates.length - 1);
         var dateKey = data.dates[dataIdx];
         var totalValue = values[idx];
-        
-        updateValueDisplays(totalValue, data.baseCurrency);
-        
+
         var dayData = data.transactionsByDate[dateKey] || { transactions: [], trades: [] };
-        displayDailyDetails(dateStr, dayData.transactions, dayData.trades, data.baseCurrency);
+        displayDailyDetails(dateStr, totalValue, data.baseCurrency, dayData.transactions, dayData.trades);
       })
       .on("pointerleave", function () {
         hoverLine.style("display", "none");
-        resetValueDisplays(data.baseCurrency);
+        hoverTooltip.style("display", "none");
         clearDailyDetails();
       });
 
