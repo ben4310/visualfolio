@@ -53,15 +53,15 @@ class TransactionMappingError(Exception):
 def extract_current_balance(balances_response: dict, expected_currency: str) -> float:
     """
     Extract the current balance from a GoCardless balances API response.
-    Prefers 'interimBooked' or 'interimAvailable', falls back to any available balance.
+    Prefers available balances, then booked, to match transaction inclusion.
     Raises CurrencyMismatchError if the balance currency doesn't match.
     """
     balances = balances_response.get("balances", [])
     if not balances:
         raise TransactionMappingError("No balances returned by API")
 
-    # Preference order for balance types
-    preference = ["interimBooked", "interimAvailable", "closingBooked", "expected"]
+    # Preference order for balance types: available first, then booked
+    preference = ["interimAvailable", "interimBooked", "closingBooked", "expected"]
 
     selected = None
     for pref in preference:
@@ -164,7 +164,8 @@ def map_booked_transactions(
     user_tz: zoneinfo.ZoneInfo | None = None,
 ) -> list[Transaction]:
     """
-    Map booked transactions from the GoCardless API response to unsaved Transaction instances.
+    Map transactions from the GoCardless API response to unsaved Transaction instances.
+    Includes both booked and pending transactions.
     Only includes transactions within [date_from, date_to].
     Raises CurrencyMismatchError on currency mismatches.
     Silently skips zero-amount transactions.
@@ -176,9 +177,11 @@ def map_booked_transactions(
     if user_tz is None:
         user_tz = zoneinfo.ZoneInfo("UTC")
     booked = transactions_response.get("transactions", {}).get("booked", [])
+    pending = transactions_response.get("transactions", {}).get("pending", [])
+    all_transactions = booked + pending
     mapped: list[Transaction] = []
 
-    for raw_txn in booked:
+    for raw_txn in all_transactions:
         txn_id = (
             raw_txn.get("transactionId")
             or raw_txn.get("internalTransactionId")
