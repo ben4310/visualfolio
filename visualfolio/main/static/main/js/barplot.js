@@ -75,7 +75,7 @@
       .attr("shape-rendering", "crispEdges");
 
     // Bars
-    var maxBarWidth = 12; // Match w-3 h-3 dot size (12px)
+    var maxBarWidth = 6; // Match w-3 h-3 dot size (12px)
 
     months.forEach(function (month) {
       var mg = g.append("g")
