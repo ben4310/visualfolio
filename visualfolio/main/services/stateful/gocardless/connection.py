@@ -196,6 +196,10 @@ class ConnectionService:
             account=account, sync_status="idle",
         ).exists()
         if has_idle:
+            AccountAsset.objects.filter(
+                account=account,
+                sync_status="idle",
+            ).update(sync_status="pending_sync", last_sync_error=None)
             self._trigger_background_sync(account)
 
         return [account]

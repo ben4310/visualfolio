@@ -1238,6 +1238,7 @@ class SyncAccountView(LoginRequiredMixin, View):
         import logging
         import threading
         from django.http import JsonResponse
+        from main.models import AccountAsset
         from main.services.stateful.gocardless.sync import (
             TransactionSyncService,
             SyncAlreadyInProgressError,
@@ -1253,6 +1254,14 @@ class SyncAccountView(LoginRequiredMixin, View):
 
         if not account.is_synced:
             return JsonResponse({"error": "Account is not a synced account"}, status=400)
+
+        AccountAsset.objects.filter(
+            account=account,
+            sync_status="idle",
+        ).update(
+            sync_status="pending_sync",
+            last_sync_error=None,
+        )
 
         def _run():
             try:

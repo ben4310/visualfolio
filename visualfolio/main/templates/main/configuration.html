@@ -172,28 +172,26 @@
                                 <span class="text-xxs ml-3 px-2 py-0.5 rounded-full bg-(--first-accent-color) text-white font-medium">
                                     SYNCED
                                 </span>
-                                <!-- Inline rate limit / sync badge for single AccountAsset -->
                                 {% if aa_count == 1 %}
                                 {% with aa=account_assets.0 %}
-                                <div class="flex items-center space-x-4 ml-3">
+                                {% if aa.sync_status != 'syncing' and aa.sync_status != 'pending_sync' and aa.account_success_limit %}
+                                <div class="flex items-center space-x-3 ml-3">
                                     <div class="text-sm text-(--third-text-color) whitespace-nowrap">
-                                        {% if aa.account_success_limit %}
-                                            <span class="font-semibold" data-rate-text>{{ aa.account_success_remaining }}/{{ aa.account_success_limit }}</span> fetches left
-                                        {% else %}
-                                            <span class="font-semibold" data-rate-text>0/-</span> API calls left
-                                        {% endif %}
+                                        <span class="font-semibold" data-rate-text>{{ aa.account_success_remaining }}/{{ aa.account_success_limit }}</span> fetches left
                                     </div>
                                     <div class="w-16 bg-(--third-bg-color) rounded-full h-1.5">
-                                        {% if aa.account_success_limit %}
                                         <div class="rate-limit-bar h-1.5 rounded-full transition-all"
                                              data-remaining="{{ aa.account_success_remaining }}"
                                              data-limit="{{ aa.account_success_limit }}">
                                         </div>
-                                        {% else %}
-                                        <div class="h-1.5 rounded-full bg-gray-300 dark:bg-gray-700" style="width: 0%"></div>
-                                        {% endif %}
                                     </div>
+                                    {% if aa.account_success_reset %}
+                                    <div class="text-xs text-(--third-text-color) whitespace-nowrap">
+                                        resets in: <span class="reset-countdown font-semibold" data-reset-time="{{ aa.account_success_reset.isoformat }}">-</span>
+                                    </div>
+                                    {% endif %}
                                 </div>
+                                {% endif %}
                                 {% endwith %}
                                 {% endif %}
                                 {% endif %}
@@ -201,38 +199,37 @@
                             <div class="flex-1"></div>
                             <div class="flex items-center space-x-4 flex-shrink-0">
                                 {% if account.is_synced %}
-                                <!-- Sync badge for single AccountAsset (inline) -->
                                 {% if aa_count == 1 %}
                                 {% with aa=account_assets.0 %}
-                                <span class="sync-badge text-xs px-2 py-0.5 rounded-full"
-                                      data-aa-id="{{ aa.pk }}">
-                                    {% if aa.sync_status == 'syncing' %}
-                                    <span class="bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200 text-xs px-2 py-0.5 rounded-full">
+                                <div class="flex items-center space-x-3">
+                                    {% if aa.sync_status == 'syncing' or aa.sync_status == 'pending_sync' %}
+                                    <span class="sync-badge text-xs px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200"
+                                          data-aa-id="{{ aa.pk }}">
                                         Syncing...
                                     </span>
-                                    {% elif aa.sync_status == 'idle' and aa.last_successful_sync %}
-                                    <span class="bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200 text-xs px-2 py-0.5 rounded-full">
-                                        Last sync: <span class="last-sync-time" data-sync-time="{{ aa.last_successful_sync.isoformat }}">-</span>
+                                    {% else %}
+                                    <span class="sync-badge text-xs px-2 py-0.5 rounded-full"
+                                          data-aa-id="{{ aa.pk }}">
+                                        {% if aa.last_successful_sync %}
+                                        <span class="bg-(--green-bg-color) text-(--green-text-color) text-xs px-2 py-0.5 rounded-full">
+                                            Last sync: <span class="last-sync-time" data-sync-time="{{ aa.last_successful_sync.isoformat }}">-</span>
+                                        </span>
+                                        {% else %}
+                                        <span class="bg-(--red-bg-color) text-(--red-text-color) text-xs px-2 py-0.5 rounded-full">
+                                            Last sync: never
+                                        </span>
+                                        {% endif %}
                                     </span>
                                     {% endif %}
-                                </span>
+                                </div>
                                 {% endwith %}
                                 {% endif %}
                                 <button onclick="triggerSync({{ account.id }})"
                                         class="sync-btn text-xs text-(--first-text-color) bg-(--second-bg-color) hover:bg-(--third-bg-color) cursor-pointer px-3 py-1.5 rounded border border-(--border-color) transition-colors disabled:opacity-50 disabled:hover:bg-(--second-bg-color)"
                                         id="sync-btn-{{ account.id }}"
-                                        {% for aa in account_assets %}{% if aa.sync_status == 'syncing' or aa.account_success_remaining == 0 %}disabled{% endif %}{% endfor %}>
+                                        {% for aa in account_assets %}{% if aa.sync_status == 'syncing' or aa.sync_status == 'pending_sync' or aa.account_success_remaining == 0 %}disabled{% endif %}{% endfor %}>
                                     Sync now
                                 </button>
-                                {% if aa_count == 1 %}
-                                {% with aa=account_assets.0 %}
-                                {% if aa.account_success_remaining == 0 and aa.account_success_reset %}
-                                <div class="text-xs pr-4 text-(--third-text-color) whitespace-nowrap">
-                                    - resets in: <span class="reset-countdown font-semibold" data-reset-time="{{ aa.account_success_reset.isoformat }}">-</span>
-                                </div>
-                                {% endif %}
-                                {% endwith %}
-                                {% endif %}
                                 {% else %}
                                 <a href="{% url 'manage_account_assets' account.id %}"
                                    class="text-sm text-(--first-text-color) bg-(--second-bg-color) hover:bg-(--third-bg-color) cursor-pointer px-3 py-1.5 rounded border border-(--border-color) transition-colors">
@@ -252,35 +249,33 @@
                             {% for aa in account_assets %}
                             <div class="flex items-center space-x-3 text-sm aa-row" data-aa-id="{{ aa.pk }}">
                                 <span class="font-medium text-(--first-text-color) w-10">{{ aa.asset.code|default:"..." }}</span>
+                                {% if aa.sync_status != 'syncing' and aa.sync_status != 'pending_sync' and aa.account_success_limit %}
                                 <div class="flex items-center space-x-3">
                                     <div class="text-sm text-(--third-text-color) whitespace-nowrap">
-                                        {% if aa.account_success_limit %}
-                                            <span class="font-semibold" data-rate-text>{{ aa.account_success_remaining }}/{{ aa.account_success_limit }}</span> fetches left
-                                        {% else %}
-                                            <span class="font-semibold" data-rate-text>0/-</span> API calls left
-                                        {% endif %}
+                                        <span class="font-semibold" data-rate-text>{{ aa.account_success_remaining }}/{{ aa.account_success_limit }}</span> fetches left
                                     </div>
                                     <div class="w-16 bg-(--third-bg-color) rounded-full h-1.5">
-                                        {% if aa.account_success_limit %}
                                         <div class="rate-limit-bar h-1.5 rounded-full transition-all"
                                              data-remaining="{{ aa.account_success_remaining }}"
                                              data-limit="{{ aa.account_success_limit }}">
                                         </div>
-                                        {% else %}
-                                        <div class="h-1.5 rounded-full bg-gray-300 dark:bg-gray-700" style="width: 0%"></div>
-                                        {% endif %}
                                     </div>
                                 </div>
+                                {% endif %}
                                 <span class="sync-badge text-xs px-2 py-0.5 rounded-full
-                                    {% if aa.sync_status == 'syncing' %}bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200{% endif %}"
+                                    {% if aa.sync_status == 'syncing' or aa.sync_status == 'pending_sync' %}bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200{% endif %}"
                                       data-aa-id="{{ aa.pk }}">
-                                    {% if aa.sync_status == 'syncing' %}
+                                    {% if aa.sync_status == 'syncing' or aa.sync_status == 'pending_sync' %}
                                     <span class="bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200 text-xs px-2 py-0.5 rounded-full">
                                         Syncing...
                                     </span>
-                                    {% elif aa.sync_status == 'idle' and aa.last_successful_sync %}
-                                    <span class="bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200 text-xs px-2 py-0.5 rounded-full">
+                                    {% elif aa.last_successful_sync %}
+                                    <span class="bg-(--green-bg-color) text-(--green-text-color) text-xs px-2 py-0.5 rounded-full">
                                         Last sync: <span class="last-sync-time" data-sync-time="{{ aa.last_successful_sync.isoformat }}">-</span>
+                                    </span>
+                                    {% else %}
+                                    <span class="bg-(--red-bg-color) text-(--red-text-color) text-xs px-2 py-0.5 rounded-full">
+                                        Last sync: never
                                     </span>
                                     {% endif %}
                                 </span>
@@ -468,6 +463,16 @@
                         <input type="text" id="txnCategory" 
                                class="w-full bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)" 
                                placeholder="e.g., Groceries">
+                    </div>
+
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-2">
+                            <label class="inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="txnInfluencesBalance" class="sr-only peer" checked>
+                                <div class="relative w-11 h-6 bg-gray-200 dark:bg-gray-700 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-(--first-accent-color)"></div>
+                            </label>
+                            <span class="text-xs font-medium text-(--third-text-color)">Influences balance</span>
+                        </div>
                     </div>
 
                     <div class="flex gap-3">
@@ -684,23 +689,6 @@
     </div>
 
     <script>
-    /**
-     * Append the browser's UTC offset to a datetime-local string so the server
-     * receives an unambiguous, timezone-aware ISO 8601 value (e.g. "2026-02-17T22:37+01:00").
-     * The datetime-local input always operates in the browser's local time; encoding the
-     * offset here ensures the back-end stores the correct UTC instant regardless of the
-     * user's configured app timezone.
-     */
-    function withBrowserTzOffset(datetimeLocalValue) {
-        var d = new Date(datetimeLocalValue);
-        var offsetMin = -d.getTimezoneOffset(); // getTimezoneOffset() returns UTC-local, so negate
-        var sign = offsetMin >= 0 ? '+' : '-';
-        var abs = Math.abs(offsetMin);
-        var hh = String(Math.floor(abs / 60)).padStart(2, '0');
-        var mm = String(abs % 60).padStart(2, '0');
-        return datetimeLocalValue + sign + hh + ':' + mm;
-    }
-
     var pendingDeleteAccountId = null;
     var pendingDeleteAccountName = null;
 
@@ -764,121 +752,20 @@
             fetch('/bank/sync/' + accountId + '/status/').then(function(r) {
                 return r.json();
             }).then(function(data) {
-                var row = document.getElementById('sync-row-' + accountId);
-                var btn = row.querySelector('.sync-btn');
                 var assets = data.account_assets || [];
 
-                var anySyncing = assets.some(function(a) { return a.sync_status === 'syncing'; });
+                var anySyncing = assets.some(function(a) {
+                    return a.sync_status === 'syncing' || a.sync_status === 'pending_sync';
+                });
 
                 if (anySyncing) {
                     pollSync(accountId);
                     return;
                 }
 
-                // Sync finished -- update UI and notify
-                assets.forEach(function(a) {
-                    updateAccountAssetUI(a);
-                });
-
-                var errors = assets.filter(function(a) { return a.last_sync_error; });
-                if (errors.length > 0) {
-                    errors.forEach(function(a) {
-                        showToast('Sync failed' + (a.asset_code ? ' (' + a.asset_code + ')' : '') + ': ' + a.last_sync_error, 'error');
-                    });
-                } else {
-                    showToast('Sync completed successfully', 'success');
-                }
-
-                btn.disabled = false;
-                manageSyncButtonState();
+                location.reload();
             });
         }, 2000);
-    }
-
-    function updateAccountAssetUI(assetData) {
-        var badgeClasses, badgeText;
-        if (assetData.sync_status === 'syncing') {
-            badgeClasses = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
-            badgeText = 'Syncing...';
-        } else {
-            badgeClasses = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-            badgeText = 'Idle';
-        }
-
-        // Update sync badges
-        var badges = document.querySelectorAll('.sync-badge[data-aa-id="' + assetData.id + '"]');
-        badges.forEach(function(badge) {
-            var innerSpan = badge.querySelector('span');
-            if (innerSpan) {
-                innerSpan.className = badgeClasses + ' text-xs px-2 py-0.5 rounded-full';
-                innerSpan.textContent = badgeText;
-            } else {
-                badge.className = 'sync-badge text-xs px-2 py-0.5 rounded-full ' + badgeClasses;
-                badge.textContent = badgeText;
-            }
-        });
-
-        // Update rate limit info
-        if (!assetData.account_success_limit) return;
-        var remaining = assetData.account_success_remaining || 0;
-        var limit = assetData.account_success_limit || 1;
-        var percentage = Math.round((remaining / limit) * 100);
-
-        // Find rate limit container: .aa-row for multi-asset, parent sync-row for single-asset
-        var rateContainer = document.querySelector('.aa-row[data-aa-id="' + assetData.id + '"]');
-        if (!rateContainer) {
-            var anyBadge = badges[0] || document.querySelector('[data-aa-id="' + assetData.id + '"]');
-            if (anyBadge) {
-                rateContainer = anyBadge.closest('[id^="sync-row-"]');
-            }
-        }
-        if (!rateContainer) return;
-
-        var rateText = rateContainer.querySelector('[data-rate-text]');
-        if (rateText) {
-            rateText.textContent = remaining + '/' + limit;
-        }
-
-        // Find progress bar parent, then the child (works even if rate-limit-bar class doesn't exist yet)
-        var barParent = rateContainer.querySelector('.w-16.bg-\\(--third-bg-color\\).rounded-full');
-        if (barParent) {
-            var progressBar = barParent.firstElementChild;
-            if (progressBar) {
-                // Ensure it has the rate-limit-bar class and proper styling
-                progressBar.className = 'rate-limit-bar h-1.5 rounded-full transition-all';
-                progressBar.setAttribute('data-remaining', remaining);
-                progressBar.setAttribute('data-limit', limit);
-                progressBar.style.width = percentage + '%';
-
-                if (percentage > 50) {
-                    progressBar.classList.add('bg-green-500');
-                } else if (percentage > 20) {
-                    progressBar.classList.add('bg-yellow-500');
-                } else {
-                    progressBar.classList.add('bg-red-500');
-                }
-            }
-        }
-
-        if (assetData.account_success_reset) {
-            var countdown = rateContainer.querySelector('.reset-countdown');
-            if (!countdown) {
-                // Countdown doesn't exist yet (newly connected account) - create it
-                // Find the countdown parent: the last text div in the rate limit section
-                var textDivs = rateContainer.querySelectorAll('.text-sm.text-\\(--third-text-color\\).whitespace-nowrap');
-                var countdownParent = textDivs[textDivs.length - 1];
-                if (countdownParent) {
-                    countdownParent.textContent = '- resets in: ';
-                    countdown = document.createElement('span');
-                    countdown.className = 'reset-countdown font-semibold';
-                    countdown.textContent = '-';
-                    countdownParent.appendChild(countdown);
-                }
-            }
-            if (countdown) {
-                countdown.setAttribute('data-reset-time', assetData.account_success_reset);
-            }
-        }
     }
 
     function manageSyncButtonState() {
@@ -987,7 +874,7 @@
         var pollingAccounts = {};
         {% for account in all_accounts %}
         {% for aa in account.account_assets.all %}
-        {% if aa.sync_status == 'syncing' %}
+        {% if aa.sync_status == 'syncing' or aa.sync_status == 'pending_sync' %}
         if (!pollingAccounts[{{ account.id }}]) {
             pollingAccounts[{{ account.id }}] = true;
             pollSync({{ account.id }});
@@ -1101,6 +988,7 @@
         var amountValue = document.getElementById('txnAmount').value;
         var datetime = document.getElementById('txnDatetime').value;
         var category = document.getElementById('txnCategory').value;
+        var influencesBalance = document.getElementById('txnInfluencesBalance').checked ? '1' : '0';
         var isIncoming = document.getElementById('txnTypeToggle').checked;
 
         if (!accountId || !assetCode || !entity || !amountValue || !datetime) {
@@ -1118,8 +1006,9 @@
         var formData = new FormData();
         formData.append('entity', entity);
         formData.append('amount', amount);
-        formData.append('datetime', withBrowserTzOffset(datetime));
+        formData.append('datetime', datetime);
         formData.append('category', category);
+        formData.append('influences_balance', influencesBalance);
 
         fetch('/account/' + accountId + '/asset/' + assetCode + '/transactions/add/', {
             method: 'POST',
@@ -1134,7 +1023,7 @@
                 showToast(data.error || 'Failed to add transaction', 'error');
             }
         }).catch(function(err) {
-            showToast(err.message || String(err), 'error');
+            showToast('An error occurred', 'error');
         });
     });
 
@@ -1161,7 +1050,7 @@
                 showToast(data.error || 'Failed to delete transaction', 'error');
             }
         }).catch(function(err) {
-            showToast(err.message || String(err), 'error');
+            showToast('An error occurred', 'error');
         });
     }
 
@@ -1256,7 +1145,7 @@
 
         var formData = new FormData();
         formData.append('account_id', accountId);
-        formData.append('datetime', withBrowserTzOffset(datetime));
+        formData.append('datetime', datetime);
         formData.append('from_asset', fromAsset);
         formData.append('to_asset', toAsset);
         formData.append('use_market_rate', useMarketRate ? '1' : '0');
@@ -1277,7 +1166,7 @@
                 showToast(data.error || 'Failed to add trade', 'error');
             }
         }).catch(function(err) {
-            showToast(err.message || String(err), 'error');
+            showToast('An error occurred', 'error');
         });
     });
 
@@ -1302,7 +1191,7 @@
                 showToast(data.error || 'Failed to delete trade', 'error');
             }
         }).catch(function(err) {
-            showToast(err.message || String(err), 'error');
+            showToast('An error occurred', 'error');
         });
     }
 

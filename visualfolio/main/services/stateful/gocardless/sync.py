@@ -579,6 +579,12 @@ class TransactionSyncService:
             self._update_rate_limits(account_asset, exc.headers)
             raise
 
+        logger.debug(
+            "Raw transactions response for %s (%s to %s):\n%s",
+            account.name, date_from, date_to,
+            json.dumps(txn_resp, indent=2, default=str),
+        )
+
         transactions = map_booked_transactions(
             txn_resp, account, asset, date_from, date_to,
             user_tz=user_tz,

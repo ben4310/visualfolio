@@ -129,6 +129,7 @@ class AccountAsset(models.Model):
 
     SYNC_STATUS_CHOICES = [
         ("idle", "Idle"),
+        ("pending_sync", "Pending Sync"),
         ("syncing", "Syncing"),
     ]
 
@@ -138,7 +139,7 @@ class AccountAsset(models.Model):
     gocardless_account_id = models.CharField(max_length=64, blank=True, null=True)
 
     # Sync operational status tracking (per GoCardless account)
-    sync_status = models.CharField(max_length=10, choices=SYNC_STATUS_CHOICES, default="idle")
+    sync_status = models.CharField(max_length=20, choices=SYNC_STATUS_CHOICES, default="idle")
     last_successful_sync = models.DateTimeField(blank=True, null=True)
     last_sync_error = models.TextField(blank=True, null=True)
 
