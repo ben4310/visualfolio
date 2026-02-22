@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
 from main.models import Account
-from main.services.stateful.gocardless.sync import (
+from main.services.stateful.bank_data.sync import (
     TransactionSyncService,
     SyncAlreadyInProgressError,
 )
@@ -119,7 +119,7 @@ class Command(BaseCommand):
         
         synced_accounts = Account.objects.filter(
             user=user,
-            requisition_id__isnull=False,
+            account_type__in=["gocardless", "enable_banking"],
         ).select_related()
         
         if not synced_accounts.exists():

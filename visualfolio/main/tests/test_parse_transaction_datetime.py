@@ -5,7 +5,9 @@ from datetime import date, datetime, time, timezone
 
 from django.test import SimpleTestCase
 
-from main.services.stateful.gocardless.mapping import _parse_transaction_datetime
+from main.services.stateful.bank_data.providers.gocardless.mapping import (
+    _parse_transaction_datetime,
+)
 
 UTC = zoneinfo.ZoneInfo("UTC")
 ROME = zoneinfo.ZoneInfo("Europe/Rome")           # UTC+1 winter / UTC+2 summer

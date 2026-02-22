@@ -12,6 +12,11 @@ from django.utils import timezone
 
 from .constants import COUNTRY_CHOICES
 
+PROVIDER_CHOICES = [
+    ("gocardless", "GoCardless"),
+    ("enable_banking", "Enable Banking"),
+]
+
 
 '''
 << Static models >>
@@ -87,21 +92,28 @@ class CustomUser(AbstractUser):
 
 
 class Account(models.Model):
+    ACCOUNT_TYPE_CHOICES = [("manual", "Manual"), *PROVIDER_CHOICES]
+
     id = models.AutoField(primary_key=True)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     country = models.CharField(max_length=255, choices=COUNTRY_CHOICES)
-    requisition_id = models.UUIDField(blank=True, null=True, unique=True)
+    account_type = models.CharField(
+        max_length=20,
+        choices=ACCOUNT_TYPE_CHOICES,
+        default="manual",
+    )
+    provider_connection_id = models.UUIDField(blank=True, null=True, unique=True)
     color = models.CharField(max_length=7, default="#4b8dd3")
 
-    # GoCardless requisition-level fields (populated at link time, null for manual accounts)
-    gocardless_institution_id = models.CharField(max_length=64, blank=True, null=True)
+    # Provider-specific link metadata (populated for synced accounts)
+    institution_id = models.CharField(max_length=64, blank=True, null=True)
     transaction_total_days = models.PositiveIntegerField(blank=True, null=True)
     access_expires_at = models.DateTimeField(blank=True, null=True)
 
     @property
     def is_synced(self):
-        return self.requisition_id is not None
+        return self.account_type != "manual"
 
     class Meta:
         constraints = [
@@ -116,15 +128,15 @@ class AccountAsset(models.Model):
     """
     Links an Account to an Asset, storing external provider metadata.
     
-    For GoCardless synced accounts: stores the GoCardless account ID (their
+    For synced accounts: stores the provider account ID (their
     internal identifier for each account-currency combination). The asset may
     be NULL initially if the currency cannot be determined at link time; it
     will be resolved during the first sync. Sync operational status and rate
     limits are tracked per AccountAsset since each corresponds to a distinct
-    GoCardless account with its own API quotas.
+    provider account with its own API quotas.
     
     For manual accounts: exists only to track which assets have been established
-    on the account (no gocardless_account_id).
+    on the account (no provider_account_id).
     """
 
     SYNC_STATUS_CHOICES = [
@@ -136,7 +148,7 @@ class AccountAsset(models.Model):
     id = models.AutoField(primary_key=True)
     account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name='account_assets')
     asset = models.ForeignKey(Asset, on_delete=models.PROTECT, null=True, blank=True)
-    gocardless_account_id = models.CharField(max_length=64, blank=True, null=True)
+    provider_account_id = models.CharField(max_length=64, blank=True, null=True)
 
     # Sync operational status tracking (per GoCardless account)
     sync_status = models.CharField(max_length=20, choices=SYNC_STATUS_CHOICES, default="idle")
@@ -155,9 +167,9 @@ class AccountAsset(models.Model):
                 name='unique_account_asset_pair',
             ),
             models.UniqueConstraint(
-                fields=['gocardless_account_id'],
-                condition=models.Q(gocardless_account_id__isnull=False),
-                name='unique_gocardless_account_id',
+                fields=['provider_account_id'],
+                condition=models.Q(provider_account_id__isnull=False),
+                name='unique_provider_account_id',
             ),
         ]
     
@@ -445,7 +457,7 @@ class BalanceHistory(models.Model):
 
 
 '''
-<< GoCardless integration models >>
+<< Banking provider integration models >>
 '''
 
 class GoCardlessToken(models.Model):
@@ -479,27 +491,22 @@ class GoCardlessToken(models.Model):
         return obj
 
 
-class Requisition(models.Model):
-    """Tracks a GoCardless bank connection flow from creation through completion."""
+class PendingConnection(models.Model):
+    """Tracks pending provider auth flow state until account linking completes."""
+
     STATUS_CHOICES = [
-        ("CR", "Created"),
-        ("GC", "Giving Consent"),
-        ("UA", "Undergoing Authentication"),
-        ("RJ", "Rejected"),
-        ("SA", "Selecting Accounts"),
-        ("GA", "Granting Access"),
-        ("LN", "Linked"),
-        ("EX", "Expired"),
+        ("pending", "Pending"),
+        ("completed", "Completed"),
+        ("failed", "Failed"),
     ]
 
     id = models.UUIDField(primary_key=True)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    provider = models.CharField(max_length=32, choices=PROVIDER_CHOICES)
     institution_id = models.CharField(max_length=64)
     institution_name = models.CharField(max_length=255)
     institution_country = models.CharField(max_length=255)
-    status = models.CharField(max_length=2, choices=STATUS_CHOICES, default="CR")
-    link = models.URLField(max_length=512)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default="pending")
+    redirect_url = models.URLField(max_length=512)
     created_at = models.DateTimeField(auto_now_add=True)
-    agreement_id = models.UUIDField(blank=True, null=True)
-    transaction_total_days = models.PositiveIntegerField()
-    access_valid_for_days = models.PositiveIntegerField()
+    provider_data = models.JSONField(default=dict, blank=True)

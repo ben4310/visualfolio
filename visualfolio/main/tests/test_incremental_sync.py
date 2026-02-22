@@ -18,7 +18,7 @@ from django.test import TestCase
 from main.models import (
     Account, AccountAsset, Asset, AssetClass, BalanceHistory, CustomUser, Transaction,
 )
-from main.services.stateful.gocardless.sync import (
+from main.services.stateful.bank_data.sync import (
     BalanceReconciliationError,
     FetchExceedsBankHistoryLimit,
     TransactionSyncService,
@@ -53,15 +53,16 @@ class IncrementalSyncTestBase(TestCase):
             user=self.user,
             name="TestBank",
             country="IT",
-            requisition_id=uuid.uuid4(),
+            account_type="gocardless",
+            provider_connection_id=uuid.uuid4(),
             transaction_total_days=90,
         )
         self.account_asset = AccountAsset.objects.create(
             account=self.account,
             asset=self.asset,
-            gocardless_account_id="gc-test-123",
+            provider_account_id="gc-test-123",
         )
-        self.service = TransactionSyncService(client=MagicMock())
+        self.service = TransactionSyncService()
         self.user_tz = zoneinfo.ZoneInfo("UTC")
 
     def _seed_balance_history(self, start: date, end: date, balance: float):
@@ -90,7 +91,7 @@ class IncrementalSyncTestBase(TestCase):
         """Patch _fetch_and_filter to return given balance and transactions."""
         return patch.object(
             self.service, "_fetch_and_filter",
-            return_value=(api_balance, transactions, {}, {}),
+            return_value=(api_balance, transactions),
         )
 
     def _mock_fetch_with_txn_specs(self, api_balance: float, txn_specs: list[tuple[date, float]]):

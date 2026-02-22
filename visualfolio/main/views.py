@@ -1,8 +1,13 @@
+import logging
 import os
 import json
 import datetime
 import re
 import zoneinfo
+
+from django.utils.safestring import mark_safe
+
+logger = logging.getLogger(__name__)
 
 import pandas as pd
 import numpy as np
@@ -38,7 +43,15 @@ from main.services.stateless.visualization import (
 from main.services.stateless.calculation import BalanceCalculationService
 from main.services.stateless.transaction_service import TransactionService
 
-from .models import Transaction, Account, Asset, BalanceHistory, AssetClass, Requisition, AccountAsset
+from .models import (
+    Transaction,
+    Account,
+    Asset,
+    BalanceHistory,
+    AssetClass,
+    PendingConnection,
+    AccountAsset,
+)
 from .constants import COUNTRY_CHOICES
 
 
@@ -1152,80 +1165,153 @@ class EarningsView(LoginRequiredMixin, TemplateView):
 
 
 class BankLinkView(LoginRequiredMixin, View):
-    """Step 2: Initiate connection for the selected bank."""
+    """Initiate connection for the selected provider and institution."""
     login_url = "login"
 
     def post(self, request, *args, **kwargs):
-        from main.services.stateful.gocardless.connection import ConnectionService
+        from main.services.stateful.bank_data.connection import ConnectionService
 
+        provider = request.POST.get("provider", "gocardless")
         institution_id = request.POST.get("institution_id", "")
         name = request.POST.get("name", "")
         country = request.POST.get("country", "")
-        transaction_total_days = int(request.POST.get("transaction_total_days", 90))
+        transaction_days_raw = request.POST.get("transaction_total_days", "")
 
         if not institution_id or not name:
             messages.error(request, "Invalid institution selection.")
             return redirect(f"{reverse('configuration')}?step=bank_select")
 
-        # Build the callback URL
-        redirect_url = request.build_absolute_uri("/bank/callback/")
+        if provider == "gocardless":
+            callback_url = request.build_absolute_uri(reverse("bank_callback_gocardless"))
+        elif provider == "enable_banking":
+            callback_url = request.build_absolute_uri(reverse("bank_callback_enable_banking"))
+        else:
+            messages.error(request, "Invalid provider selection.")
+            return redirect(f"{reverse('configuration')}?step=bank_select")
+
+        transaction_total_days = None
+        if transaction_days_raw:
+            try:
+                transaction_total_days = int(transaction_days_raw)
+            except ValueError:
+                transaction_total_days = None
 
         try:
             svc = ConnectionService()
-            requisition = svc.initiate_connection(
+            pending = svc.initiate_connection(
+                provider_type=provider,
                 user=request.user,
                 institution_id=institution_id,
                 institution_name=name,
                 institution_country=country,
                 transaction_total_days=transaction_total_days,
-                redirect_url=redirect_url,
+                redirect_url=request.build_absolute_uri(reverse("configuration")),
+                callback_url=callback_url,
             )
         except Exception as exc:
-            messages.error(request, f"Could not initiate bank connection: {exc}")
+            logger.exception("Failed to initiate bank connection for %s (%s)", name, provider)
+            messages.error(request, f"Could not initiate connection to {name}: {exc}")
             return redirect(f"{reverse('configuration')}?step=bank_select")
 
-        # Redirect user to GoCardless/bank authentication page
-        return redirect(requisition.link)
+        return redirect(pending.redirect_url)
 
 
-class BankCallbackView(LoginRequiredMixin, View):
-    """Step 3: GoCardless redirects back here after bank authentication."""
+class GoCardlessCallbackView(LoginRequiredMixin, View):
+    """Provider callback endpoint for GoCardless."""
     login_url = "login"
 
     def get(self, request, *args, **kwargs):
-        import logging
-        from main.services.stateful.gocardless.connection import ConnectionService
+        from main.services.stateful.bank_data.connection import ConnectionService
 
-        logger = logging.getLogger(__name__)
         ref = request.GET.get("ref", "")
-
-        # Find the requisition for this user (most recent pending one)
-        requisition = (
-            Requisition.objects.filter(user=request.user)
-            .exclude(status__in=["LN", "EX", "RJ"])
-            .order_by("-created_at")
-            .first()
-        )
-
-        if not requisition:
-            logger.warning("BankCallbackView: No pending requisition found for user %s", request.user.pk)
+        pending = None
+        if ref:
+            pending = PendingConnection.objects.filter(
+                id=ref,
+                user=request.user,
+                provider="gocardless",
+                status="pending",
+            ).first()
+        if pending is None:
+            pending = (
+                PendingConnection.objects.filter(
+                    user=request.user,
+                    provider="gocardless",
+                    status="pending",
+                )
+                .order_by("-created_at")
+                .first()
+            )
+        if not pending:
             messages.error(request, "No pending bank connection found.")
             return redirect("configuration")
 
-        logger.info("BankCallbackView: Processing requisition %s for user %s", requisition.pk, request.user.pk)
-
         try:
             svc = ConnectionService()
-            accounts = svc.complete_connection(str(requisition.pk))
-            logger.info("BankCallbackView: Successfully created %d account(s) from requisition %s", len(accounts), requisition.pk)
+            accounts = svc.complete_connection(
+                provider_type="gocardless",
+                pending=pending,
+                callback_params=request.GET.dict(),
+            )
             messages.success(
                 request,
-                f"Successfully linked {len(accounts)} account(s) from {requisition.institution_name}. "
+                f"Successfully linked {len(accounts)} account(s) from {pending.institution_name}. "
                 f"Initial sync is running in the background.",
             )
         except Exception as exc:
-            logger.exception("BankCallbackView: Failed to complete connection for requisition %s", requisition.pk)
-            messages.error(request, f"Bank connection failed: {exc}")
+            logger.exception("Failed to complete GoCardless connection for %s", pending.institution_name)
+            messages.error(request, f"Could not complete connection to {pending.institution_name}: {exc}")
+
+        return redirect("configuration")
+
+
+class EnableBankingCallbackView(LoginRequiredMixin, View):
+    """Provider callback endpoint for Enable Banking."""
+    login_url = "login"
+
+    def get(self, request, *args, **kwargs):
+        from main.services.stateful.bank_data.connection import ConnectionService
+
+        state = request.GET.get("state", "")
+        if not state:
+            messages.error(request, "Invalid Enable Banking callback state.")
+            return redirect("configuration")
+
+        pending = PendingConnection.objects.filter(
+            id=state,
+            user=request.user,
+            provider="enable_banking",
+            status="pending",
+        ).first()
+        if not pending:
+            messages.error(request, "No pending Enable Banking connection found.")
+            return redirect("configuration")
+
+        try:
+            svc = ConnectionService()
+            accounts = svc.complete_connection(
+                provider_type="enable_banking",
+                pending=pending,
+                callback_params=request.GET.dict(),
+            )
+            messages.success(
+                request,
+                f"Successfully linked {len(accounts)} account(s) from {pending.institution_name}. "
+                f"Initial sync is running in the background.",
+            )
+        except Exception as exc:
+            logger.exception("Failed to complete Enable Banking connection for %s", pending.institution_name)
+            error_text = str(exc)
+            if "No accounts were returned by provider 'enable_banking'" in error_text:
+                messages.error(
+                    request,
+                    mark_safe(
+                        "No accounts were returned by the provider for this institution. "
+                        "<b><u>Did you forget to link the account in the Enable Banking Developer Platform?</u></b>"
+                    ),
+                )
+            else:
+                messages.error(request, f"Could not complete connection to {pending.institution_name}: {exc}")
 
         return redirect("configuration")
 
@@ -1239,7 +1325,7 @@ class SyncAccountView(LoginRequiredMixin, View):
         import threading
         from django.http import JsonResponse
         from main.models import AccountAsset
-        from main.services.stateful.gocardless.sync import (
+        from main.services.stateful.bank_data.sync import (
             TransactionSyncService,
             SyncAlreadyInProgressError,
         )
@@ -1346,9 +1432,12 @@ class AddAccountView(LoginRequiredMixin, TemplateView):
     login_url = "login"
 
     def get_context_data(self, **kwargs):
+        from main.services.stateful.bank_data.providers import get_enabled_providers
+
         context = super().get_context_data(**kwargs)
         context["current_view"] = "configuration"
-        context["gocardless_enabled"] = settings.GOCARDLESS_ENABLED
+        context["enabled_providers"] = get_enabled_providers()
+        context["bank_sync_enabled"] = len(context["enabled_providers"]) > 0
         return context
 
 
@@ -1400,6 +1489,7 @@ class AddManualAccountView(LoginRequiredMixin, View):
                 name=name,
                 country=country,
                 color=color,
+                account_type="manual",
             )
         except IntegrityError:
             messages.error(request, "An account with this name already exists.")
@@ -1415,11 +1505,22 @@ class ConfigurationView(LoginRequiredMixin, TemplateView):
     login_url = "login"
 
     def get_context_data(self, **kwargs):
+        from main.services.stateful.bank_data.providers import get_all_providers
         from main.constants import COUNTRY_CHOICES
 
         context = super().get_context_data(**kwargs)
         context["current_view"] = "configuration"
-        context["gocardless_enabled"] = settings.GOCARDLESS_ENABLED
+        all_providers = get_all_providers()
+        enabled_providers = [p for p in all_providers if p["enabled"]]
+        context["enabled_providers"] = enabled_providers
+        context["bank_sync_enabled"] = len(enabled_providers) > 0
+        default_provider = enabled_providers[0]["type"] if enabled_providers else ""
+        context["provider_labels"] = {"manual": "Manual"} | {
+            p["type"]: p["label"] for p in all_providers
+        }
+        context["provider_badge_classes"] = {
+            "manual": "bg-(--third-bg-color) text-(--third-text-color)",
+        } | {p["type"]: p["badge_classes"] for p in all_providers}
 
         # Get all accounts (both synced and manual) with theme-adjusted dot colors
         all_accounts = list(
@@ -1434,6 +1535,8 @@ class ConfigurationView(LoginRequiredMixin, TemplateView):
             l = max(0, min(100, l + (l_change * 100)))
             return f"hsl({h}, {s}%, {l}%)"
 
+        provider_badge_classes = context["provider_badge_classes"]
+        provider_labels = context["provider_labels"]
         for account in all_accounts:
             account.hsl_light_background = _theme_account_color(
                 account.color, 0.05, 0.10
@@ -1441,14 +1544,27 @@ class ConfigurationView(LoginRequiredMixin, TemplateView):
             account.hsl_dark_background = _theme_account_color(
                 account.color, -0.05, -0.10
             )
+            account.provider_badge_classes = provider_badge_classes.get(
+                account.account_type, "bg-(--third-bg-color) text-(--third-text-color)"
+            )
+            account.provider_label = provider_labels.get(account.account_type, account.account_type)
 
         context["all_accounts"] = all_accounts
 
-        # Check if we're in bank selection step
         step = self.request.GET.get("step", "")
         context["step"] = step
 
-        if step == "bank_select":
+        if step == "provider_select":
+            context["all_providers"] = get_all_providers()
+
+        elif step == "bank_select":
+            selected_provider_type = self.request.GET.get("provider", default_provider)
+            all_providers_map = {p["type"]: p for p in all_providers}
+            selected_provider_meta = all_providers_map.get(selected_provider_type, {})
+            context["selected_provider"] = selected_provider_type
+            context["selected_provider_enabled"] = selected_provider_meta.get("enabled", False)
+            context["selected_provider_disabled_reason"] = selected_provider_meta.get("disabled_reason")
+            context["selected_provider_setup_notice"] = selected_provider_meta.get("setup_notice")
             context["countries"] = COUNTRY_CHOICES
             context["institutions"] = []
             context["selected_country"] = self.request.GET.get("country", "")
@@ -1462,11 +1578,14 @@ class ConfigurationView(LoginRequiredMixin, TemplateView):
             # Assets that have a balance on at least one manual account (for picklist and filter)
             context["assets_with_balance"] = Asset.objects.filter(
                 accountasset__account__user=self.request.user,
-                accountasset__account__requisition_id__isnull=True,
+                accountasset__account__account_type="manual",
             ).distinct().order_by("code")
 
             # Get all user accounts (manual only) for filter dropdown
-            context["user_accounts"] = Account.objects.filter(user=self.request.user, requisition_id__isnull=True).order_by("name")
+            context["user_accounts"] = Account.objects.filter(
+                user=self.request.user,
+                account_type="manual",
+            ).order_by("name")
             
             # Get filtered transactions (manual accounts only)
             account_filter = self.request.GET.get("account")
@@ -1474,7 +1593,7 @@ class ConfigurationView(LoginRequiredMixin, TemplateView):
             
             txns = Transaction.objects.filter(
                 account__user=self.request.user,
-                account__requisition_id__isnull=True,
+                account__account_type="manual",
             ).select_related("account", "asset")
             
             if account_filter:
@@ -1489,7 +1608,10 @@ class ConfigurationView(LoginRequiredMixin, TemplateView):
         # Load data for trades tab
         elif active_tab == "trades":
             # Get all user accounts (manual only) for filter dropdown
-            context["user_accounts"] = Account.objects.filter(user=self.request.user, requisition_id__isnull=True).order_by("name")
+            context["user_accounts"] = Account.objects.filter(
+                user=self.request.user,
+                account_type="manual",
+            ).order_by("name")
             context["all_assets"] = Asset.objects.order_by("code")
             
             # Get filtered trades
@@ -1542,34 +1664,35 @@ class ConfigurationView(LoginRequiredMixin, TemplateView):
 
     def post(self, request, *args, **kwargs):
         """Handle bank selection form submission."""
-        from main.services.stateful.gocardless.connection import ConnectionService
+        from main.services.stateful.bank_data.connection import ConnectionService
         from main.services.stateful.gocardless.constants import COUNTRY_TO_ISO_CODE
-        from main.constants import COUNTRY_CHOICES
 
         step = request.GET.get("step", "")
         if step != "bank_select":
             return redirect("configuration")
 
+        provider_type = request.POST.get("provider", request.GET.get("provider", "gocardless"))
         country_name = request.POST.get("country_name", "").strip()
         if not country_name:
             messages.error(request, "Please select a valid country.")
-            return redirect(f"{reverse('configuration')}?step=bank_select")
+            return redirect(f"{reverse('configuration')}?step=bank_select&provider={provider_type}")
 
         country_code = COUNTRY_TO_ISO_CODE.get(country_name)
         if not country_code:
             messages.error(request, f"Country '{country_name}' not recognized.")
-            return redirect(f"{reverse('configuration')}?step=bank_select")
+            return redirect(f"{reverse('configuration')}?step=bank_select&provider={provider_type}")
 
         try:
             svc = ConnectionService()
-            institutions = svc.list_institutions(country_code)
+            institutions = svc.list_institutions(provider_type, country_code)
         except Exception as exc:
             messages.error(request, f"Could not fetch institutions: {exc}")
-            return redirect(f"{reverse('configuration')}?step=bank_select")
+            return redirect(f"{reverse('configuration')}?step=bank_select&provider={provider_type}")
 
         context = self.get_context_data(**kwargs)
         context["institutions"] = institutions
         context["selected_country"] = country_name
+        context["selected_provider"] = provider_type
         return self.render_to_response(context)
 
 

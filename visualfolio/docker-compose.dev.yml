@@ -36,6 +36,8 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-visualfolio_dev}:${POSTGRES_PASSWORD:-dev_password_change_me}@db-dev:5432/${POSTGRES_DB:-visualfolio_dev}
       GOCARDLESS_SECRET_ID: ${GOCARDLESS_SECRET_ID:-}
       GOCARDLESS_SECRET_KEY: ${GOCARDLESS_SECRET_KEY:-}
+      ENABLE_BANKING_KEY_CONTENT: ${ENABLE_BANKING_KEY_CONTENT:-}
+      ENABLE_BANKING_APPLICATION_ID: ${ENABLE_BANKING_APPLICATION_ID:-}
     ports:
       - "${APP_PORT:-8001}:8000"
     volumes:

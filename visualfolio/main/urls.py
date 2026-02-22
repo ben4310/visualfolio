@@ -9,7 +9,8 @@ from .views import (
     RegistrationView,
     LogoutView,
     BankLinkView,
-    BankCallbackView,
+    GoCardlessCallbackView,
+    EnableBankingCallbackView,
     SyncAccountView,
     SyncStatusView,
     DeleteAccountView,
@@ -44,9 +45,10 @@ urlpatterns = [
     path('configuration/add-account/', AddAccountView.as_view(), name='add_account'),
     path('configuration/add-account/manual/', AddManualAccountView.as_view(), name='add_manual_account'),
 
-    # GoCardless bank connection
+    # Bank connection
     path('bank/link/', BankLinkView.as_view(), name='bank_link'),
-    path('bank/callback/', BankCallbackView.as_view(), name='bank_callback'),
+    path('bank/gocardless/callback/', GoCardlessCallbackView.as_view(), name='bank_callback_gocardless'),
+    path('bank/enable-banking/callback/', EnableBankingCallbackView.as_view(), name='bank_callback_enable_banking'),
     path('bank/sync/<int:account_id>/', SyncAccountView.as_view(), name='sync_account'),
     path('bank/sync/<int:account_id>/status/', SyncStatusView.as_view(), name='sync_status'),
     path('bank/account/<int:account_id>/delete/', DeleteAccountView.as_view(), name='delete_account'),

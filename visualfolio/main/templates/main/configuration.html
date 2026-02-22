@@ -6,25 +6,55 @@
 {% block content %}
     <h1 class="font-display font-medium text-2xl text-(--first-text-color) mt-4 mb-6">Configuration</h1>
 
-    <!-- Bank Selection Step (inline) -->
-    {% if step == "bank_select" %}
-        {% if not gocardless_enabled %}
-            <div class="bg-(--second-bg-color) border border-(--border-color) rounded-xl p-6 mb-6 text-(--third-text-color)">
-                Bank account syncing is not configured. GoCardless credentials are required.
+    <!-- Provider Selection Step -->
+    {% if step == "provider_select" %}
+        <div class="bg-(--second-bg-color) border border-(--border-color) rounded-xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="font-medium text-lg text-(--first-text-color)">Select Provider</h2>
+                <a href="{% url 'add_account' %}" class="text-sm text-(--third-text-color) hover:text-(--first-text-color)">
+                    &larr; Back
+                </a>
             </div>
-        {% else %}
-            <div class="bg-(--second-bg-color) border border-(--border-color) rounded-xl p-6 mb-6 flex flex-col" style="max-height: calc(100vh - 200px);">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="font-medium text-lg text-(--first-text-color)">Select Bank</h2>
-                    <a href="{% url 'configuration' %}" class="text-sm text-(--third-text-color) hover:text-(--first-text-color)">
-                        &larr; Back
-                    </a>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {% for provider in all_providers %}
+                {% if provider.enabled %}
+                <a href="{% url 'configuration' %}?step=bank_select&provider={{ provider.type }}"
+                   class="flex flex-col p-5 rounded-xl border border-(--border-color) bg-(--first-bg-color) hover:bg-(--third-bg-color) transition-colors">
+                    <span class="font-medium text-(--first-text-color) mb-2">{{ provider.label }} API</span>
+                    <p class="text-sm text-(--third-text-color)">{{ provider.description }}</p>
+                </a>
+                {% else %}
+                <div class="flex flex-col p-5 rounded-xl border border-(--border-color) bg-(--first-bg-color) opacity-50 cursor-not-allowed">
+                    <span class="font-medium text-(--first-text-color) mb-2">{{ provider.label }} API</span>
+                    <p class="text-sm text-(--third-text-color)">{{ provider.description }}</p>
+                    <p class="text-xs text-(--third-text-color) mt-3 italic">{{ provider.disabled_reason }}</p>
                 </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+
+    <!-- Bank Selection Step -->
+    {% elif step == "bank_select" %}
+        <div class="bg-(--second-bg-color) border border-(--border-color) rounded-xl p-6 mb-6 flex flex-col" style="max-height: calc(100vh - 200px);">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="font-medium text-lg text-(--first-text-color)">Select Bank</h2>
+                <a href="{% url 'configuration' %}?step=provider_select" class="text-sm text-(--third-text-color) hover:text-(--first-text-color)">
+                    &larr; Back
+                </a>
+            </div>
+
+                {% if selected_provider_setup_notice %}
+                <div class="mb-4 text-sm text-cyan-600 dark:text-cyan-400 p-3 bg-cyan-50 dark:bg-cyan-900/20 border border-cyan-200 dark:border-cyan-800 rounded">
+                    {{ selected_provider_setup_notice }}
+                </div>
+                {% endif %}
 
                 <!-- Country selection -->
                 <div class="mb-6">
                     <form method="post" action="{% url 'configuration' %}?step=bank_select" id="country-form">
                         {% csrf_token %}
+                        <input type="hidden" name="provider" value="{{ selected_provider }}">
                         <div>
                             <label for="country_name" class="block text-sm font-medium text-(--third-text-color) mb-3">
                                 Bank Account Country
@@ -44,7 +74,7 @@
                 {% if selected_country %}
                 {% if institutions %}
                 <div class="mb-4">
-                    <input type="text" id="bank-search" placeholder="Search by bank or account name..."
+                    <input type="text" id="bank-search" placeholder="Search by bank or account name..." autofocus
                            class="w-120 bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)">
                 </div>
                 <div class="flex-1 overflow-y-auto bg-(--first-bg-color) border border-(--border-color) rounded-xl p-3">
@@ -52,21 +82,28 @@
                         {% for inst in institutions %}
                         <form method="post" action="{% url 'bank_link' %}" class="bank-item" data-bank-name="{{ inst.name|lower }}">
                             {% csrf_token %}
+                            <input type="hidden" name="provider" value="{{ selected_provider }}">
                             <input type="hidden" name="institution_id" value="{{ inst.id }}">
                             <input type="hidden" name="name" value="{{ inst.name }}">
                             <input type="hidden" name="country" value="{{ selected_country }}">
+                            {% if inst.transaction_total_days %}
                             <input type="hidden" name="transaction_total_days" value="{{ inst.transaction_total_days }}">
+                            {% endif %}
                             <button type="submit"
                                     class="w-full flex items-center space-x-4 p-4 rounded-xl border border-(--border-color) bg-(--second-bg-color)
                                            hover:bg-(--third-bg-color) transition duration-100 text-left cursor-pointer">
                                 {% if inst.logo %}
-                                <img src="{{ inst.logo }}" alt="" class="w-10 h-10 rounded-md flex-shrink-0 object-contain">
+                                <div class="w-10 h-10 rounded-md border border-slate-200 flex-shrink-0 flex items-center justify-center" style="background-color: #ffffff;">
+                                    <img src="{{ inst.logo }}" alt="" class="w-8 h-8 object-contain">
+                                </div>
                                 {% else %}
-                                <div class="w-10 h-10 rounded-md bg-(--third-bg-color) flex-shrink-0"></div>
+                                <div class="w-10 h-10 rounded-md border border-slate-200 flex-shrink-0" style="background-color: #ffffff;"></div>
                                 {% endif %}
                                 <div class="min-w-0 flex-1">
                                     <div class="text-sm font-medium text-(--first-text-color) truncate">{{ inst.name }}</div>
+                                    {% if inst.transaction_total_days %}
                                     <div class="text-xs text-(--third-text-color) mt-1">{{ inst.transaction_total_days }} days history</div>
+                                    {% endif %}
                                 </div>
                             </button>
                         </form>
@@ -106,14 +143,16 @@
                     }
                 });
 
-                // Auto-focus search input when page loads if a country is selected
-                document.addEventListener('DOMContentLoaded', function() {
-                    var countrySelect = document.getElementById('country_name');
-                    var searchInput = document.getElementById('bank-search');
-                    if (countrySelect && countrySelect.value && searchInput) {
+                // Keep focus in bank search when the bank list is rendered
+                var searchInput = document.getElementById('bank-search');
+                if (searchInput) {
+                    window.requestAnimationFrame(function() {
                         searchInput.focus();
-                    }
-                });
+                    });
+                    setTimeout(function() {
+                        searchInput.focus();
+                    }, 100);
+                }
                 </script>
                 {% else %}
                 <div class="text-(--third-text-color) text-sm bg-(--first-bg-color) border border-(--border-color) rounded-xl p-6 text-center">
@@ -121,8 +160,8 @@
                 </div>
                 {% endif %}
                 {% endif %}
-            </div>
-        {% endif %}
+        </div>
+
     {% else %}
         <!-- Tab Navigation -->
         <div class="flex space-x-4 border-b border-(--border-color) mb-6">
@@ -161,17 +200,12 @@
                                 <div>
                                     <div class="flex items-center space-x-2">
                                         <div class="text-md font-medium text-(--first-text-color)">{{ account.name }}</div>
-                                        {% if not account.is_synced %}
-                                        <span class="text-xxs ml-3 px-2 py-0.5 rounded-full bg-(--third-bg-color) text-(--third-text-color) font-medium">
-                                            MANUAL
+                                        <span class="text-xxs ml-3 px-2 py-0.5 rounded-full font-medium {{ account.provider_badge_classes }}">
+                                            {{ account.provider_label }}
                                         </span>
-                                        {% endif %}
                                     </div>
                                 </div>
                                 {% if account.is_synced %}
-                                <span class="text-xxs ml-3 px-2 py-0.5 rounded-full bg-(--first-accent-color) text-white font-medium">
-                                    SYNCED
-                                </span>
                                 {% if aa_count == 1 %}
                                 {% with aa=account_assets.0 %}
                                 {% if aa.sync_status != 'syncing' and aa.sync_status != 'pending_sync' and aa.account_success_limit %}
@@ -308,9 +342,9 @@
                 </a>
             </div>
 
-            {% if not gocardless_enabled %}
+            {% if not bank_sync_enabled %}
                 <div class="text-sm text-amber-600 dark:text-amber-400 mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded">
-                    Bank account syncing is not configured. GoCardless credentials are required for synced accounts.
+                    Bank account syncing is not configured. Provider credentials are required for synced accounts.
                 </div>
             {% endif %}
         </div>

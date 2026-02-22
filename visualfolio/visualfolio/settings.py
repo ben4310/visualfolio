@@ -82,6 +82,12 @@ ENV_CONFIG: Dict[str, EnvVarConfig] = {
     "GOCARDLESS_SECRET_KEY": {
         "default": None
     },
+    "ENABLE_BANKING_KEY_CONTENT": {
+        "default": None
+    },
+    "ENABLE_BANKING_APPLICATION_ID": {
+        "default": None
+    },
 }
 
 
@@ -108,6 +114,12 @@ GOCARDLESS_SECRET_KEY = get_env_var("GOCARDLESS_SECRET_KEY", ENV_CONFIG["GOCARDL
 GOCARDLESS_BASE_URL = "https://bankaccountdata.gocardless.com"
 GOCARDLESS_ENABLED = GOCARDLESS_SECRET_ID is not None and GOCARDLESS_SECRET_KEY is not None
 
+# Enable Banking AIS API
+# -----------------------------------------------------------------------------
+ENABLE_BANKING_KEY_CONTENT = get_env_var("ENABLE_BANKING_KEY_CONTENT", ENV_CONFIG["ENABLE_BANKING_KEY_CONTENT"])
+ENABLE_BANKING_APPLICATION_ID = get_env_var("ENABLE_BANKING_APPLICATION_ID", ENV_CONFIG["ENABLE_BANKING_APPLICATION_ID"])
+ENABLE_BANKING_BASE_URL = "https://api.enablebanking.com"
+ENABLE_BANKING_ENABLED = (ENABLE_BANKING_KEY_CONTENT is not None and ENABLE_BANKING_APPLICATION_ID is not None)
 
 # Application
 # -----------------------------------------------------------------------------
