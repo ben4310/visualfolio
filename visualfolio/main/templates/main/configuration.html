@@ -245,12 +245,12 @@
                                     <span class="sync-badge text-xs px-2 py-0.5 rounded-full"
                                           data-aa-id="{{ aa.pk }}">
                                         {% if aa.last_successful_sync %}
-                                        <span class="bg-(--green-bg-color) text-(--green-text-color) text-xs px-2 py-0.5 rounded-full">
+                                        <span class="last-sync-pill bg-(--green-bg-color) text-(--green-text-color) text-xs px-2 py-0.5 rounded-full">
                                             Last sync: <span class="last-sync-time" data-sync-time="{{ aa.last_successful_sync.isoformat }}">-</span>
                                         </span>
                                         {% else %}
                                         <span class="bg-(--red-bg-color) text-(--red-text-color) text-xs px-2 py-0.5 rounded-full">
-                                            Last sync: never
+                                            Last sync: -
                                         </span>
                                         {% endif %}
                                     </span>
@@ -304,12 +304,12 @@
                                         Syncing...
                                     </span>
                                     {% elif aa.last_successful_sync %}
-                                    <span class="bg-(--green-bg-color) text-(--green-text-color) text-xs px-2 py-0.5 rounded-full">
+                                    <span class="last-sync-pill bg-(--green-bg-color) text-(--green-text-color) text-xs px-2 py-0.5 rounded-full">
                                         Last sync: <span class="last-sync-time" data-sync-time="{{ aa.last_successful_sync.isoformat }}">-</span>
                                     </span>
                                     {% else %}
                                     <span class="bg-(--red-bg-color) text-(--red-text-color) text-xs px-2 py-0.5 rounded-full">
-                                        Last sync: never
+                                        Last sync: -
                                     </span>
                                     {% endif %}
                                 </span>
@@ -950,6 +950,18 @@
                 var syncTime = new Date(el.getAttribute('data-sync-time'));
                 var now = new Date();
                 var diff = Math.floor((now - syncTime) / 1000);
+                var isStale = diff >= 3600;
+                var pill = el.closest('.last-sync-pill');
+
+                if (pill) {
+                    if (isStale) {
+                        pill.classList.remove('bg-(--green-bg-color)', 'text-(--green-text-color)');
+                        pill.classList.add('bg-(--third-bg-color)', 'text-(--third-text-color)');
+                    } else {
+                        pill.classList.remove('bg-(--third-bg-color)', 'text-(--third-text-color)');
+                        pill.classList.add('bg-(--green-bg-color)', 'text-(--green-text-color)');
+                    }
+                }
 
                 if (diff < 60) {
                     el.textContent = 'just now';
