@@ -1,3 +1,4 @@
+import re
 import zoneinfo
 
 from django.db import models
@@ -115,13 +116,24 @@ class Account(models.Model):
     def is_synced(self):
         return self.account_type != "manual"
 
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=['name', 'user'],
-                name='unique_account_name_per_user',
-            )
-        ]
+    def save(self, *args, **kwargs):
+        existing_names = set(
+            Account.objects.filter(user=self.user)
+            .exclude(pk=self.pk)
+            .values_list("name", flat=True)
+        )
+        if self.name in existing_names:
+            # Strip any trailing " (N)" suffix to recover the bare base name,
+            # e.g. "Savings (3)" → "Savings".
+            base = re.sub(r"\s*\(\d+\)$", "", self.name).strip()
+            # If the name already ends with " (N)", start trying from N+1 so
+            # we preserve the user's intent; otherwise start from 2.
+            suffix_match = re.search(r"\((\d+)\)$", self.name.strip())
+            counter = int(suffix_match.group(1)) + 1 if suffix_match else 2
+            while f"{base} ({counter})" in existing_names:
+                counter += 1
+            self.name = f"{base} ({counter})"
+        super().save(*args, **kwargs)
 
 
 class AccountAsset(models.Model):
