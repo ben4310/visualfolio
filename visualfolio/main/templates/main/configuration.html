@@ -80,7 +80,7 @@
                 <div class="flex-1 overflow-y-auto bg-(--first-bg-color) border border-(--border-color) rounded-xl p-3">
                     <div class="grid grid-cols-2 gap-3" id="banks-grid">
                         {% for inst in institutions %}
-                        <form method="post" action="{% url 'bank_link' %}" class="bank-item" data-bank-name="{{ inst.name|lower }}">
+                        <form method="post" action="{% url 'configuration' %}?step=account_setup" class="bank-item" data-bank-name="{{ inst.name|lower }}">
                             {% csrf_token %}
                             <input type="hidden" name="provider" value="{{ selected_provider }}">
                             <input type="hidden" name="institution_id" value="{{ inst.id }}">
@@ -161,6 +161,67 @@
                 {% endif %}
                 {% endif %}
         </div>
+
+    <!-- Account Setup Step -->
+    {% elif step == "account_setup" %}
+        <div class="bg-(--second-bg-color) border border-(--border-color) rounded-xl p-6 mb-6 max-w-2xl">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="font-medium text-lg text-(--first-text-color)">Set Up Account</h2>
+                <a href="{% url 'configuration' %}?step=bank_select&provider={{ selected_provider }}"
+                   class="text-sm text-(--third-text-color) hover:text-(--first-text-color)">
+                    &larr; Back
+                </a>
+            </div>
+            <form method="post" action="{% url 'bank_link' %}" class="space-y-5">
+                {% csrf_token %}
+                <input type="hidden" name="provider" value="{{ selected_provider }}">
+                <input type="hidden" name="institution_id" value="{{ institution_id }}">
+                <input type="hidden" name="name" value="{{ institution_name }}">
+                <input type="hidden" name="country" value="{{ institution_country }}">
+                {% if transaction_total_days %}
+                <input type="hidden" name="transaction_total_days" value="{{ transaction_total_days }}">
+                {% endif %}
+
+                <div>
+                    <label for="custom_name" class="block text-sm font-medium text-(--first-text-color) mb-2">Account name</label>
+                    <input id="custom_name"
+                           name="custom_name"
+                           type="text"
+                           maxlength="255"
+                           required
+                           value="{{ institution_name }}"
+                           class="w-full px-3 py-2 rounded-lg border border-(--border-color) bg-(--first-bg-color) text-(--first-text-color) focus:outline-none focus:ring-2 focus:ring-(--first-accent-color)">
+                </div>
+
+                <div>
+                    <label for="color" class="block text-sm font-medium text-(--first-text-color) mb-2">Account color</label>
+                    <div class="flex items-center gap-3">
+                        <input id="color"
+                               name="color"
+                               type="color"
+                               value="{{ default_color }}"
+                               class="h-10 w-20 rounded border border-(--border-color) bg-(--first-bg-color) p-0.5 cursor-pointer">
+                        <span id="colorHexLabel" class="text-sm text-(--third-text-color) font-mono">{{ default_color }}</span>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3 pt-2">
+                    <button type="submit"
+                            class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-(--first-accent-color) hover:bg-(--second-accent-color) transition-colors cursor-pointer">
+                        Connect account
+                    </button>
+                    <a href="{% url 'configuration' %}?step=bank_select&provider={{ selected_provider }}"
+                       class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-(--first-text-color) bg-(--first-bg-color) border border-(--border-color) hover:bg-(--third-bg-color) transition-colors">
+                        Cancel
+                    </a>
+                </div>
+            </form>
+        </div>
+        <script>
+        document.getElementById('color').addEventListener('input', function() {
+            document.getElementById('colorHexLabel').textContent = this.value;
+        });
+        </script>
 
     {% else %}
         <!-- Tab Navigation -->
@@ -270,12 +331,11 @@
                                     Add or edit assets
                                 </a>
                                 {% endif %}
-                                <button onclick="deleteAccount({{ account.id }}, '{{ account.name|escapejs }}')" title="Delete"
-                                        class="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 cursor-pointer p-1.5 rounded border border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                                <button onclick="openEditAccountModal({{ account.id }}, '{{ account.name|escapejs }}', '{{ account.color }}')" title="Edit"
+                                        class="text-(--third-text-color) hover:text-(--first-text-color) cursor-pointer p-1.5 rounded border border-(--border-color) hover:bg-(--third-bg-color) transition-colors">
                                     <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M3 6H21M5 6V20C5 21.1046 5.89543 22 7 22H17C18.1046 22 19 21.1046 19 20V6M8 6V4C8 2.89543 8.89543 2 10 2H14C15.1046 2 16 2.89543 16 4V6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                        <path d="M14 11V17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                        <path d="M10 11V17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        <path d="M11 3H5C3.89543 3 3 3.89543 3 5V19C3 20.1046 3.89543 21 5 21H19C20.1046 21 21 20.1046 21 19V13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        <path d="M9.5 11.5L17.5 3.5C18.3284 2.67157 19.6716 2.67157 20.5 3.5C21.3284 4.32843 21.3284 5.67157 20.5 6.5L12.5 14.5L8 16L9.5 11.5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                                     </svg>
                                 </button>
                             </div>
@@ -702,6 +762,43 @@
         {% endif %}
     {% endif %}
 
+    <!-- Edit Account Modal -->
+    <div id="editAccountModal" class="hidden fixed inset-0 flex items-center justify-center z-50" style="background-color: rgba(0, 0, 0, 0.15);">
+        <div class="bg-(--second-bg-color) border border-(--border-color) rounded-xl p-6 w-full max-w-md">
+            <h3 class="text-lg font-medium text-(--first-text-color) mb-4">Edit Account</h3>
+            <div class="mb-3">
+                <label class="block text-sm font-medium text-(--third-text-color) mb-1">Name</label>
+                <input type="text" id="editAccountName"
+                       class="w-full bg-(--first-bg-color) border border-(--border-color) text-(--first-text-color) rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-(--first-accent-color)"
+                       placeholder="Account name">
+            </div>
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-(--third-text-color) mb-1">Color</label>
+                <div class="flex items-center gap-3">
+                    <input type="color" id="editAccountColor"
+                           class="w-10 h-10 rounded cursor-pointer border border-(--border-color) bg-(--first-bg-color) p-0.5">
+                    <span id="editAccountColorHex" class="text-sm text-(--third-text-color) font-mono"></span>
+                </div>
+            </div>
+            <div class="flex gap-3 mb-6">
+                <button type="button" onclick="closeEditAccountModal()"
+                        class="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-(--first-text-color) bg-(--third-bg-color) hover:bg-(--border-color) transition-colors cursor-pointer">
+                    Cancel
+                </button>
+                <button type="button" onclick="submitEditAccount()"
+                        class="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-white bg-(--first-accent-color) hover:bg-(--second-accent-color) transition-colors cursor-pointer">
+                    Save Changes
+                </button>
+            </div>
+            <div class="border-t border-(--border-color) pt-4">
+                <button type="button" onclick="deleteAccountFromModal()"
+                        class="w-full px-4 py-2 rounded-lg text-sm font-medium text-red-600 dark:text-red-400 border border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors cursor-pointer">
+                    Delete Account
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Delete Account Confirmation Modal -->
     <div id="deleteAccountModal" class="hidden fixed inset-0 flex items-center justify-center z-50" style="background-color: rgba(0, 0, 0, 0.15);">
         <div class="bg-(--second-bg-color) border border-(--border-color) rounded-xl p-6 w-full max-w-md">
@@ -737,7 +834,79 @@
     <script>
     var pendingDeleteAccountId = null;
     var pendingDeleteAccountName = null;
+    var editingAccountId = null;
 
+    // ── Edit modal ──────────────────────────────────────────────────────────
+    function openEditAccountModal(accountId, accountName, accountColor) {
+        editingAccountId = accountId;
+        document.getElementById('editAccountName').value = accountName;
+        document.getElementById('editAccountColor').value = accountColor;
+        document.getElementById('editAccountColorHex').textContent = accountColor;
+        document.getElementById('editAccountModal').classList.remove('hidden');
+        document.getElementById('editAccountName').focus();
+    }
+
+    function closeEditAccountModal() {
+        document.getElementById('editAccountModal').classList.add('hidden');
+        editingAccountId = null;
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        var colorInput = document.getElementById('editAccountColor');
+        if (colorInput) {
+            colorInput.addEventListener('input', function() {
+                document.getElementById('editAccountColorHex').textContent = this.value;
+            });
+        }
+
+        var editModalEl = document.getElementById('editAccountModal');
+        if (editModalEl) {
+            editModalEl.addEventListener('click', function(e) {
+                if (e.target === this) closeEditAccountModal();
+            });
+        }
+    });
+
+    function submitEditAccount() {
+        if (!editingAccountId) return;
+        var name = document.getElementById('editAccountName').value.trim();
+        var color = document.getElementById('editAccountColor').value;
+
+        if (!name) {
+            showToast('Account name is required', 'error');
+            return;
+        }
+
+        var formData = new FormData();
+        formData.append('name', name);
+        formData.append('color', color);
+
+        fetch('/bank/account/' + editingAccountId + '/edit/', {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'},
+            body: formData
+        }).then(function(r) {
+            return r.json();
+        }).then(function(data) {
+            if (data.success) {
+                location.reload();
+            } else {
+                showToast(data.error || 'Failed to save changes', 'error');
+            }
+        }).catch(function() {
+            showToast('An error occurred', 'error');
+        });
+    }
+
+    function deleteAccountFromModal() {
+        if (!editingAccountId) return;
+        var accountId = editingAccountId;
+        var accountName = document.getElementById('editAccountName').value;
+        closeEditAccountModal();
+        deleteAccount(accountId, accountName);
+    }
+
+    // ── Delete confirmation modal ────────────────────────────────────────────
     function deleteAccount(accountId, accountName) {
         pendingDeleteAccountId = accountId;
         pendingDeleteAccountName = accountName;
@@ -760,10 +929,8 @@
         }).then(function(r) {
             return r.json();
         }).then(function(data) {
-            // Always reload - Django messages will show success/error
             location.reload();
         }).catch(function(err) {
-            // Reload on error too - let Django handle error display
             location.reload();
         });
     }
@@ -1259,6 +1426,11 @@
     // ESC key to close modals
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
+            var editModal = document.getElementById('editAccountModal');
+            if (editModal && !editModal.classList.contains('hidden')) {
+                closeEditAccountModal();
+                return;
+            }
             var deleteModal = document.getElementById('deleteAccountModal');
             if (deleteModal && !deleteModal.classList.contains('hidden')) {
                 closeDeleteAccountModal();

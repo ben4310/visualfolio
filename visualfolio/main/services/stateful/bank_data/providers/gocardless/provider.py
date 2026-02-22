@@ -53,6 +53,8 @@ class GoCardlessProvider(BankingProvider):
         redirect_url: str,
         callback_url: str,
         transaction_total_days: int | None = None,
+        custom_name: str | None = None,
+        color: str | None = None,
     ) -> PendingConnection:
         max_history_days = min(transaction_total_days or 90, 730)
         access_valid_for_days = 90
@@ -67,6 +69,16 @@ class GoCardlessProvider(BankingProvider):
             reference=str(uuid.uuid4()),
             agreement_id=agreement["id"],
         )
+        provider_data: dict = {
+            "agreement_id": agreement["id"],
+            "transaction_total_days": transaction_total_days or 90,
+            "access_valid_for_days": access_valid_for_days,
+        }
+        if custom_name:
+            provider_data["custom_name"] = custom_name
+        if color:
+            provider_data["color"] = color
+
         return PendingConnection.objects.create(
             id=requisition["id"],
             user=user,
@@ -76,11 +88,7 @@ class GoCardlessProvider(BankingProvider):
             institution_country=institution_country,
             status="pending",
             redirect_url=requisition["link"],
-            provider_data={
-                "agreement_id": agreement["id"],
-                "transaction_total_days": transaction_total_days or 90,
-                "access_valid_for_days": access_valid_for_days,
-            },
+            provider_data=provider_data,
         )
 
     def complete_auth(

@@ -1174,10 +1174,12 @@ class BankLinkView(LoginRequiredMixin, View):
         provider = request.POST.get("provider", "gocardless")
         institution_id = request.POST.get("institution_id", "")
         name = request.POST.get("name", "")
+        custom_name = request.POST.get("custom_name", "").strip() or name
+        color = request.POST.get("color", "#4b8dd3").strip()
         country = request.POST.get("country", "")
         transaction_days_raw = request.POST.get("transaction_total_days", "")
 
-        if not institution_id or not name:
+        if not institution_id or not custom_name:
             messages.error(request, "Invalid institution selection.")
             return redirect(f"{reverse('configuration')}?step=bank_select")
 
@@ -1207,6 +1209,8 @@ class BankLinkView(LoginRequiredMixin, View):
                 transaction_total_days=transaction_total_days,
                 redirect_url=request.build_absolute_uri(reverse("configuration")),
                 callback_url=callback_url,
+                custom_name=custom_name,
+                color=color,
             )
         except Exception as exc:
             logger.exception("Failed to initiate bank connection for %s (%s)", name, provider)
@@ -1404,6 +1408,34 @@ class SyncStatusView(LoginRequiredMixin, View):
                 for aa in account_assets
             ],
         })
+
+
+class EditAccountView(LoginRequiredMixin, View):
+    """Update the name and color of an account."""
+    login_url = "login"
+
+    def post(self, request, *args, **kwargs):
+        from django.http import JsonResponse
+
+        account_id = kwargs.get("account_id")
+        try:
+            account = Account.objects.get(pk=account_id, user=request.user)
+        except Account.DoesNotExist:
+            return JsonResponse({"success": False, "error": "Account not found"}, status=404)
+
+        name = request.POST.get("name", "").strip()
+        color = request.POST.get("color", "").strip()
+
+        if not name:
+            return JsonResponse({"success": False, "error": "Name is required"}, status=400)
+        if not re.fullmatch(r"#[0-9A-Fa-f]{6}", color):
+            return JsonResponse({"success": False, "error": "Invalid color format"}, status=400)
+
+        account.name = name
+        account.color = color
+        account.save()
+
+        return JsonResponse({"success": True, "name": account.name})
 
 
 class DeleteAccountView(LoginRequiredMixin, View):
@@ -1663,11 +1695,35 @@ class ConfigurationView(LoginRequiredMixin, TemplateView):
         return context
 
     def post(self, request, *args, **kwargs):
-        """Handle bank selection form submission."""
+        """Handle bank selection and account setup form submissions."""
         from main.services.stateful.bank_data.connection import ConnectionService
         from main.services.stateful.gocardless.constants import COUNTRY_TO_ISO_CODE
 
         step = request.GET.get("step", "")
+
+        if step == "account_setup":
+            provider_type = request.POST.get("provider", "")
+            institution_id = request.POST.get("institution_id", "").strip()
+            institution_name = request.POST.get("name", "").strip()
+            institution_country = request.POST.get("country", "").strip()
+            transaction_total_days = request.POST.get("transaction_total_days", "")
+
+            if not institution_id or not institution_name:
+                messages.error(request, "Invalid institution selection.")
+                return redirect(
+                    f"{reverse('configuration')}?step=bank_select&provider={provider_type}"
+                )
+
+            context = self.get_context_data(**kwargs)
+            context["step"] = "account_setup"
+            context["selected_provider"] = provider_type
+            context["institution_id"] = institution_id
+            context["institution_name"] = institution_name
+            context["institution_country"] = institution_country
+            context["transaction_total_days"] = transaction_total_days
+            context["default_color"] = "#4b8dd3"
+            return self.render_to_response(context)
+
         if step != "bank_select":
             return redirect("configuration")
 

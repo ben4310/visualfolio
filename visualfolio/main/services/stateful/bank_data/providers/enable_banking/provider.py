@@ -67,6 +67,8 @@ class EnableBankingProvider(BankingProvider):
         redirect_url: str,
         callback_url: str,
         transaction_total_days: int | None = None,
+        custom_name: str | None = None,
+        color: str | None = None,
     ) -> PendingConnection:
         # institution_id format for EB is "{country_code}::{name}" (e.g. "IT::Fineco Bank").
         # The API requires the 2-letter ISO code, not the display country name.
@@ -85,6 +87,14 @@ class EnableBankingProvider(BankingProvider):
                 "psu_type": "personal",
             }
         )
+        provider_data: dict = {
+            "authorization_id": auth_response.get("authorization_id"),
+        }
+        if custom_name:
+            provider_data["custom_name"] = custom_name
+        if color:
+            provider_data["color"] = color
+
         return PendingConnection.objects.create(
             id=pending_id,
             user=user,
@@ -94,9 +104,7 @@ class EnableBankingProvider(BankingProvider):
             institution_country=institution_country,
             status="pending",
             redirect_url=auth_response["url"],
-            provider_data={
-                "authorization_id": auth_response.get("authorization_id"),
-            },
+            provider_data=provider_data,
         )
 
     def complete_auth(

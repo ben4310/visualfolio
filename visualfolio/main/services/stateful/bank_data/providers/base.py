@@ -62,6 +62,8 @@ class BankingProvider(ABC):
         redirect_url: str,
         callback_url: str,
         transaction_total_days: int | None = None,
+        custom_name: str | None = None,
+        color: str | None = None,
     ) -> PendingConnection:
         raise NotImplementedError
 

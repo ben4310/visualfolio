@@ -31,6 +31,8 @@ class ConnectionService:
         redirect_url: str,
         callback_url: str,
         transaction_total_days: int | None = None,
+        custom_name: str | None = None,
+        color: str | None = None,
     ) -> PendingConnection:
         provider = get_provider(provider_type)
         if not provider.is_enabled:
@@ -43,6 +45,8 @@ class ConnectionService:
             redirect_url=redirect_url,
             callback_url=callback_url,
             transaction_total_days=transaction_total_days,
+            custom_name=custom_name,
+            color=color,
         )
 
     def complete_connection(
@@ -74,9 +78,12 @@ class ConnectionService:
             account.transaction_total_days = result.transaction_total_days
             account.save(update_fields=["access_expires_at", "transaction_total_days"])
         else:
+            account_name = pending.provider_data.get("custom_name") or result.institution_name
+            account_color = pending.provider_data.get("color") or "#4b8dd3"
             account = Account.objects.create(
                 user=pending.user,
-                name=result.institution_name,
+                name=account_name,
+                color=account_color,
                 country=result.institution_country,
                 account_type=provider_type,
                 provider_connection_id=result.provider_connection_id,

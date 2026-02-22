@@ -13,6 +13,7 @@ from .views import (
     EnableBankingCallbackView,
     SyncAccountView,
     SyncStatusView,
+    EditAccountView,
     DeleteAccountView,
     ConfigurationView,
     AddAccountView,
@@ -51,6 +52,7 @@ urlpatterns = [
     path('bank/enable-banking/callback/', EnableBankingCallbackView.as_view(), name='bank_callback_enable_banking'),
     path('bank/sync/<int:account_id>/', SyncAccountView.as_view(), name='sync_account'),
     path('bank/sync/<int:account_id>/status/', SyncStatusView.as_view(), name='sync_status'),
+    path('bank/account/<int:account_id>/edit/', EditAccountView.as_view(), name='edit_account'),
     path('bank/account/<int:account_id>/delete/', DeleteAccountView.as_view(), name='delete_account'),
 
     # Manual account asset and transaction management
