@@ -211,17 +211,17 @@
                                 {% if aa.sync_status != 'syncing' and aa.sync_status != 'pending_sync' and aa.account_success_limit %}
                                 <div class="flex items-center space-x-3 ml-3">
                                     <div class="text-sm text-(--third-text-color) whitespace-nowrap">
-                                        <span class="font-semibold" data-rate-text>{{ aa.account_success_remaining }}/{{ aa.account_success_limit }}</span> fetches left
+                                        <span class="font-semibold" data-rate-text>{{ aa.account_success_remaining_effective }}/{{ aa.account_success_limit }}</span> fetches left
                                     </div>
                                     <div class="w-16 bg-(--third-bg-color) rounded-full h-1.5">
                                         <div class="rate-limit-bar h-1.5 rounded-full transition-all"
-                                             data-remaining="{{ aa.account_success_remaining }}"
+                                             data-remaining="{{ aa.account_success_remaining_effective }}"
                                              data-limit="{{ aa.account_success_limit }}">
                                         </div>
                                     </div>
-                                    {% if aa.account_success_reset %}
+                                    {% if aa.account_success_reset_display %}
                                     <div class="text-xs text-(--third-text-color) whitespace-nowrap">
-                                        resets in: <span class="reset-countdown font-semibold" data-reset-time="{{ aa.account_success_reset.isoformat }}">-</span>
+                                        resets in: <span class="reset-countdown font-semibold" data-reset-time="{{ aa.account_success_reset_display.isoformat }}">-</span>
                                     </div>
                                     {% endif %}
                                 </div>
@@ -261,7 +261,7 @@
                                 <button onclick="triggerSync({{ account.id }})"
                                         class="sync-btn text-xs text-(--first-text-color) bg-(--second-bg-color) hover:bg-(--third-bg-color) cursor-pointer px-3 py-1.5 rounded border border-(--border-color) transition-colors disabled:opacity-50 disabled:hover:bg-(--second-bg-color)"
                                         id="sync-btn-{{ account.id }}"
-                                        {% for aa in account_assets %}{% if aa.sync_status == 'syncing' or aa.sync_status == 'pending_sync' or aa.account_success_remaining == 0 %}disabled{% endif %}{% endfor %}>
+                                        {% for aa in account_assets %}{% if aa.sync_status == 'syncing' or aa.sync_status == 'pending_sync' or aa.account_success_remaining_effective == 0 %}disabled{% endif %}{% endfor %}>
                                     Sync now
                                 </button>
                                 {% else %}
@@ -286,11 +286,11 @@
                                 {% if aa.sync_status != 'syncing' and aa.sync_status != 'pending_sync' and aa.account_success_limit %}
                                 <div class="flex items-center space-x-3">
                                     <div class="text-sm text-(--third-text-color) whitespace-nowrap">
-                                        <span class="font-semibold" data-rate-text>{{ aa.account_success_remaining }}/{{ aa.account_success_limit }}</span> fetches left
+                                        <span class="font-semibold" data-rate-text>{{ aa.account_success_remaining_effective }}/{{ aa.account_success_limit }}</span> fetches left
                                     </div>
                                     <div class="w-16 bg-(--third-bg-color) rounded-full h-1.5">
                                         <div class="rate-limit-bar h-1.5 rounded-full transition-all"
-                                             data-remaining="{{ aa.account_success_remaining }}"
+                                             data-remaining="{{ aa.account_success_remaining_effective }}"
                                              data-limit="{{ aa.account_success_limit }}">
                                         </div>
                                     </div>
@@ -925,7 +925,10 @@
                 var diff = Math.floor((resetTime - now) / 1000);
 
                 if (diff <= 0) {
-                    el.textContent = 'now (refresh page)';
+                    var container = el.closest('div');
+                    if (container) {
+                        container.style.display = 'none';
+                    }
                 } else {
                     var hours = Math.floor(diff / 3600);
                     var minutes = Math.floor((diff % 3600) / 60);

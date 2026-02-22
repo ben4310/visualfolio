@@ -1394,7 +1394,7 @@ class SyncStatusView(LoginRequiredMixin, View):
                         if aa.last_successful_sync else None
                     ),
                     "last_sync_error": aa.last_sync_error,
-                    "account_success_remaining": aa.account_success_remaining,
+                    "account_success_remaining": aa.account_success_remaining_effective,
                     "account_success_limit": aa.account_success_limit,
                     "account_success_reset": (
                         aa.account_success_reset.isoformat()

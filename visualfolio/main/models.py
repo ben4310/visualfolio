@@ -160,6 +160,24 @@ class AccountAsset(models.Model):
     account_success_remaining = models.PositiveIntegerField(blank=True, null=True)
     account_success_reset = models.DateTimeField(blank=True, null=True)
 
+    @property
+    def account_success_remaining_effective(self) -> int | None:
+        if self.account_success_limit is None:
+            return self.account_success_remaining
+        if self.account_success_reset is None:
+            return self.account_success_remaining
+        if self.account_success_reset <= timezone.now():
+            return self.account_success_limit
+        return self.account_success_remaining
+
+    @property
+    def account_success_reset_display(self):
+        if self.account_success_reset is None:
+            return None
+        if self.account_success_reset <= timezone.now():
+            return None
+        return self.account_success_reset
+
     class Meta:
         constraints = [
             models.UniqueConstraint(
