@@ -152,4 +152,3 @@ Visualfolio aims to provide a unified view of all the user's assets across all t
 # Roadmap
 - Bank data API integration ([GoCardless](https://gocardless.com/bank-account-data/), [Salt Edge](https://www.saltedge.com/))
 - Manual account setup for accounts not supported by the bank data API (single or batch-upload for transactions)
-- Create logomark (add to logotype and as favicon)
