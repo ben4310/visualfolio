@@ -52,7 +52,7 @@ cp env.example .env
 ```bash
 docker-compose up -d
 ```
-The stack runs `ghcr.io/visualfolio/visualfolio:latest`, which follows `main`; releases are tagged `X.Y.Z` and `X.Y`.
+The stack runs `ghcr.io/visualfolio/visualfolio:latest`, the most recent release; each release is also published as `vX.Y.Z`.
 
 **Bank connection (Enable Banking):**
 1. In the [Enable Banking Control Panel](https://enablebanking.com/), register a production application and activate it by linking your own bank accounts.
