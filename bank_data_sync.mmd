@@ -1,0 +1,110 @@
+---
+config:
+  flowchart:
+    nodeSpacing: 130
+    rankSpacing: 25
+    wrappingWidth: 380
+---
+flowchart TD
+    %% ---------- Entry ----------
+    START(["Update triggered for account X"])
+    CALC["Calculate earliest_available_date based on<br/>account institution and current date"]
+    EMPTY{"Is the balance<br/>history empty?"}
+    SET_START["Set refetch_start_date to:<br/>date of last balance history record - 1 day margin"]
+    IN_RANGE{"refetch_start_date >=<br/>earliest_available_date?"}
+    END_LIMIT(["Raise fetch exceeds bank<br/>transaction history limit"]):::failure
+
+    START --> CALC --> EMPTY
+    EMPTY -- NO --> SET_START --> IN_RANGE
+    EMPTY -- YES ----> SCR
+    IN_RANGE -- NO --> END_LIMIT
+    IN_RANGE -- YES --> INC
+
+    %% ---------- Incremental update ----------
+    subgraph INC ["Incremental update"]
+        direction TB
+        subgraph INC_FETCH ["Note: the two fetches MUST happen immediately one after the other"]
+            direction TB
+            I_BAL[/"API call: fetch current balance"/]:::api
+            I_TX[/"API call: fetch transactions since:<br/>(start of) refetch_start_date"/]:::api
+            I_BAL --> I_TX
+        end
+        I_FILTER["Remove any transactions outside<br/>the requested timespan"]
+        I_REV["Reverse-calculate balance history:<br/>from: (end of) refetch_start_date - 1 day<br/>to: day of update launch"]
+        I_NEG{"Does the balance history calculation<br/>fail due to a negative<br/>balance in history?"}
+        I_ERR_NEG["Raise balance<br/>calculation failed"]:::raise
+        I_MATCH{"Does the calculated balance of (end of)<br/>refetch_start_date - 1 day<br/>match the stored one, within a tolerance range<br/>(a few cents) that accounts for<br/>API variability/imprecision?"}
+        I_ERR_MATCH["Raise balance<br/>calculation failed"]:::raise
+
+        subgraph INC_ATOMIC ["Atomic"]
+            direction TB
+            I_DEL_TX[/"Delete all transactions of the account<br/>after (start of) refetch_start_date"/]:::db
+            I_WR_TX[/"Write all new transactions to DB"/]:::db
+            I_DEL_BH[/"Delete balance history records from<br/>refetch_start_date - 1 day (included) to end"/]:::db
+            I_WR_BH[/"Write calculated balance history"/]:::db
+            I_DEL_TX --> I_WR_TX --> I_DEL_BH --> I_WR_BH
+        end
+
+        I_TX --> I_FILTER --> I_REV --> I_NEG
+        I_NEG -- YES --> I_ERR_NEG
+        I_NEG -- NO --> I_MATCH
+        I_MATCH -- NO --> I_ERR_MATCH
+        I_MATCH -- YES --> I_DEL_TX
+    end
+
+    INC_FAILED{"Was balance calculation<br/>failed raised?"}
+    INC_COUNT{"How many times has it<br/>already happened before?"}
+    INC_RESET["refetch_start_date =<br/>earliest_available_date"]
+    END_INC_OK(["End successfully"]):::success
+    END_INC_FAIL(["Raise balance<br/>calculation failed"]):::failure
+
+    INC --> INC_FAILED
+    INC_FAILED -- NO --> END_INC_OK
+    INC_FAILED -- YES --> INC_COUNT
+    INC_COUNT -- "0" --> INC
+    INC_COUNT -- ">= 2" --> END_INC_FAIL
+    INC_COUNT -- "1" --> INC_RESET --> INC
+
+    %% ---------- Update from scratch ----------
+    subgraph SCR ["Update from scratch"]
+        direction TB
+        subgraph SCR_FETCH ["Note: the two fetches MUST happen immediately one after the other"]
+            direction TB
+            S_BAL[/"API call: fetch current balance"/]:::api
+            S_TX[/"API call: fetch transactions since:<br/>earliest_available_date"/]:::api
+            S_BAL --> S_TX
+        end
+        S_FILTER["Remove any transactions outside<br/>the requested timespan"]
+        S_REV["Reverse-calculate balance history:<br/>from: (end of) day before earliest_available_date<br/>to: day of update launch"]
+        S_NEG{"Does the balance history calculation<br/>fail due to a negative<br/>balance in history?"}
+        S_ERR_NEG["Raise balance<br/>calculation failed"]:::raise
+
+        subgraph SCR_ATOMIC ["Atomic"]
+            direction TB
+            S_WR_TX[/"Write new transactions to DB"/]:::db
+            S_WR_BH[/"Write calculated balance history to DB"/]:::db
+            S_WR_TX --> S_WR_BH
+        end
+
+        S_TX --> S_FILTER --> S_REV --> S_NEG
+        S_NEG -- YES --> S_ERR_NEG
+        S_NEG -- NO --> S_WR_TX
+    end
+
+    SCR_FAILED{"Was balance calculation<br/>failed raised?"}
+    SCR_REPEAT{"Has it happened<br/>more than once?"}
+    END_SCR_OK(["End successfully"]):::success
+    END_SCR_FAIL(["Raise balance calculation failed:<br/>negative balances not supported"]):::failure
+
+    SCR --> SCR_FAILED
+    SCR_FAILED -- NO --> END_SCR_OK
+    SCR_FAILED -- YES --> SCR_REPEAT
+    SCR_REPEAT -- NO --> SCR
+    SCR_REPEAT -- YES --> END_SCR_FAIL
+
+    %% ---------- Semantic classes ----------
+    classDef api fill:#6200ea,stroke:#3d0099,color:#ffffff
+    classDef db fill:#1e9be0,stroke:#0f6ea8,color:#ffffff
+    classDef raise fill:#ff6a00,stroke:#b34a00,color:#ffffff
+    classDef success fill:#0a8a0a,stroke:#065c06,color:#ffffff
+    classDef failure fill:#e51400,stroke:#a30e00,color:#ffffff
