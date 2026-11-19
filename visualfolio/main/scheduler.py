@@ -7,13 +7,27 @@ preventing duplicate job execution in multi-worker deployments.
 import os
 import logging
 import atexit
+import tempfile
 from apscheduler.schedulers.background import BackgroundScheduler
-from django.conf import settings
+from django.core.management import call_command
 
 logger = logging.getLogger(__name__)
 
 scheduler = None
-lock_file_path = os.path.join(settings.BASE_DIR, 'scheduler.lock')
+lock_file_path = os.path.join(tempfile.gettempdir(), 'visualfolio-scheduler.lock')
+heartbeat_file_path = os.path.join(tempfile.gettempdir(), 'visualfolio-scheduler-heartbeat')
+
+
+def touch_heartbeat():
+    """Refresh the heartbeat file that healthchecks use to detect a dead scheduler."""
+    with open(heartbeat_file_path, 'a'):
+        os.utime(heartbeat_file_path, None)
+
+
+def run_scheduled_sync():
+    """Run the scheduled account sync; refresh the heartbeat only if the run completes."""
+    call_command('check_and_sync_accounts')
+    touch_heartbeat()
 
 
 def is_process_alive(pid):
@@ -80,9 +94,8 @@ def start_scheduler():
         atexit.register(cleanup_lock)
         
         scheduler = BackgroundScheduler()
-        from django.core.management import call_command
         scheduler.add_job(
-            lambda: call_command('check_and_sync_accounts'),
+            run_scheduled_sync,
             'cron',
             hour='*',
             minute=0,
@@ -92,6 +105,7 @@ def start_scheduler():
         )
         
         scheduler.start()
+        touch_heartbeat()
         logger.info("Scheduler started successfully")
         
     except FileExistsError:

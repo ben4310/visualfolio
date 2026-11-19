@@ -19,7 +19,7 @@ services:
       - visualfolio-network
 
   app:
-    build: .
+    image: ghcr.io/visualfolio/visualfolio:latest
     restart: unless-stopped
     depends_on:
       db:
@@ -34,10 +34,8 @@ services:
       GOCARDLESS_SECRET_KEY: ${GOCARDLESS_SECRET_KEY:-}
       ENABLE_BANKING_KEY_CONTENT: ${ENABLE_BANKING_KEY_CONTENT:-}
       ENABLE_BANKING_APPLICATION_ID: ${ENABLE_BANKING_APPLICATION_ID:-}
-    volumes:
-      - static_files:/app/staticfiles
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/overview/', timeout=10)"]
+      test: ["CMD", "python", "-c", "import os, time, urllib.request as u; u.urlopen(u.Request('http://localhost:8000/login/', headers={'X-Forwarded-Proto': 'https'}), timeout=10); assert time.time() - os.path.getmtime('/tmp/visualfolio-scheduler-heartbeat') < 4500"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -49,7 +47,6 @@ services:
 
 volumes:
   postgres_data:
-  static_files:
 
 networks:
   visualfolio-network:

@@ -51,9 +51,13 @@ cp env.example .env
 **3) Deploy:**
 ```bash
 docker-compose up -d
-docker-compose exec app python manage.py makemigrations
-docker-compose exec app python manage.py migrate
 ```
+The stack runs `ghcr.io/visualfolio/visualfolio:latest`, which follows `main`; releases are tagged `X.Y.Z` and `X.Y`.
+
+**Bank connection (Enable Banking):**
+1. In the [Enable Banking Control Panel](https://enablebanking.com/), register a production application and activate it by linking your own bank accounts.
+2. Add `https://your-domain.com/bank/enable-banking/callback/` to the application's redirect URLs.
+3. Set `ENABLE_BANKING_APPLICATION_ID` and `ENABLE_BANKING_KEY_CONTENT` (output of `base64 -w 0 <application-id>.pem`) in `.env`, then restart the stack.
 
 **4) Set up external access:**
 
@@ -108,7 +112,6 @@ cloudflared tunnel run visualfolio
 - **In one terminal**, start the Docker containers:
   ```bash
   docker-compose -f docker-compose.dev.yml --env-file env.dev.example up -d
-  docker-compose -f docker-compose.dev.yml exec app-dev python manage.py makemigrations
   docker-compose -f docker-compose.dev.yml exec app-dev python manage.py migrate
   ```
 - **In a second terminal**, start the Tailwind CSS watcher (on host machine):

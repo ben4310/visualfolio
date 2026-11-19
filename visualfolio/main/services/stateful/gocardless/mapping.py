@@ -15,6 +15,10 @@ from datetime import date, datetime, time, timezone
 import dateutil.parser
 
 from main.models import Account, Asset, Transaction
+from main.services.stateful.bank_data.currency_conversion_fallback import (
+    MarketCurrencyConversionError,
+    convert_amount_with_eod_market_data,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +39,7 @@ class CurrencyMismatchError(Exception):
                 f"Bank returned transaction '{txn_id}' in {actual} without providing currency "
                 f"conversion to account currency {expected}. This is a limitation of the bank's "
                 f"PSD2 API implementation - the 'currencyExchange' field is optional under PSD2, "
-                f"and this bank chose not to provide it. Contact your bank to request proper "
-                f"multi-currency support, or use Visualfolio's market rate conversion (coming soon)."
+                f"and this bank chose not to provide it."
             )
         else:
             msg = (
@@ -155,6 +158,33 @@ def _parse_transaction_datetime(
     return datetime.combine(today, MIDDAY, tzinfo=user_tz).astimezone(timezone.utc)
 
 
+def _extract_bank_converted_amount(
+    currency_exchange: dict | list | None,
+    source_amount: float,
+    expected_currency: str,
+) -> float | None:
+    """Extract converted amount from PSD2 currencyExchange field when available."""
+    exchanges: list[dict]
+    if isinstance(currency_exchange, dict):
+        exchanges = [currency_exchange]
+    elif isinstance(currency_exchange, list):
+        exchanges = [exchange for exchange in currency_exchange if isinstance(exchange, dict)]
+    else:
+        return None
+
+    for exchange in exchanges:
+        target_currency = exchange.get("targetCurrency") or exchange.get("sourceCurrency")
+        if target_currency != expected_currency:
+            continue
+        try:
+            if "targetAmount" in exchange:
+                return float(exchange["targetAmount"])
+            return float(exchange.get("exchangeRate", 0)) * source_amount
+        except (ValueError, TypeError, KeyError):
+            continue
+    return None
+
+
 def map_booked_transactions(
     transactions_response: dict,
     account: Account,
@@ -198,64 +228,6 @@ def map_booked_transactions(
                 f"Transaction '{txn_id}': invalid amount '{amount_obj.get('amount')}'"
             )
 
-        # Handle currency mismatch: check for currencyExchange field
-        if currency != expected_asset.code:
-            currency_exchange = raw_txn.get("currencyExchange")
-            
-            # Try to extract converted amount from currencyExchange
-            # PSD2 allows this to be either a dict or a list
-            converted_amount = None
-            target_currency = None
-            
-            if isinstance(currency_exchange, dict):
-                # Single exchange: check if it converts to our expected currency
-                target_currency = currency_exchange.get("targetCurrency") or currency_exchange.get("sourceCurrency")
-                if target_currency == expected_asset.code:
-                    try:
-                        converted_amount = float(currency_exchange.get("exchangeRate", 0)) * amount
-                        # Some banks provide the converted amount directly
-                        if "targetAmount" in currency_exchange:
-                            converted_amount = float(currency_exchange["targetAmount"])
-                    except (ValueError, TypeError, KeyError):
-                        pass
-            
-            elif isinstance(currency_exchange, list) and currency_exchange:
-                # Multiple exchanges: find the one that converts to our expected currency
-                for exchange in currency_exchange:
-                    target_currency = exchange.get("targetCurrency") or exchange.get("sourceCurrency")
-                    if target_currency == expected_asset.code:
-                        try:
-                            converted_amount = float(exchange.get("exchangeRate", 0)) * amount
-                            if "targetAmount" in exchange:
-                                converted_amount = float(exchange["targetAmount"])
-                            break
-                        except (ValueError, TypeError, KeyError):
-                            continue
-            
-            # If we found a conversion, use it
-            if converted_amount is not None and target_currency == expected_asset.code:
-                logger.info(
-                    "Transaction '%s': converted %s %s to %s %s using bank-provided exchange rate",
-                    txn_id, amount, currency, converted_amount, expected_asset.code
-                )
-                amount = converted_amount
-                # Update currency to match
-                currency = expected_asset.code
-            else:
-                # No conversion available - this is the bank's fault
-                raise CurrencyMismatchError(
-                    account=account,
-                    expected=expected_asset.code,
-                    actual=currency,
-                    txn_id=txn_id,
-                    bank_fault=True,  # Bank didn't provide optional currencyExchange field
-                )
-
-        # Skip zero-amount transactions
-        if amount == 0:
-            logger.debug("Skipping zero-amount transaction '%s'", txn_id)
-            continue
-
         # --- Date/Datetime ---
         booking_date_str = (
             raw_txn.get("bookingDateTime")
@@ -265,6 +237,43 @@ def map_booked_transactions(
         )
         txn_datetime = _parse_transaction_datetime(booking_date_str, txn_id, user_tz)
         booking_date = txn_datetime.date()
+
+        # Handle currency mismatch: first bank conversion, then market-data fallback.
+        if currency != expected_asset.code:
+            converted_amount = _extract_bank_converted_amount(
+                raw_txn.get("currencyExchange"),
+                amount,
+                expected_asset.code,
+            )
+            if converted_amount is not None:
+                logger.info(
+                    "Transaction '%s': converted %s %s to %s %s using bank-provided conversion data",
+                    txn_id, amount, currency, converted_amount, expected_asset.code,
+                )
+                amount = converted_amount
+                currency = expected_asset.code
+            else:
+                try:
+                    converted_amount = convert_amount_with_eod_market_data(
+                        amount=amount,
+                        source_currency=currency,
+                        target_currency=expected_asset.code,
+                        conversion_date=booking_date,
+                        txn_id=txn_id,
+                    )
+                except MarketCurrencyConversionError as exc:
+                    raise TransactionMappingError(str(exc)) from exc
+                logger.info(
+                    "Transaction '%s': converted %s %s to %s %s using market EOD conversion",
+                    txn_id, amount, currency, converted_amount, expected_asset.code,
+                )
+                amount = converted_amount
+                currency = expected_asset.code
+
+        # Skip zero-amount transactions
+        if amount == 0:
+            logger.debug("Skipping zero-amount transaction '%s'", txn_id)
+            continue
 
         # Filter to requested range
         if booking_date < date_from or booking_date > date_to:
