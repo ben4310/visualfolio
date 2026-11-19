@@ -15,9 +15,6 @@ logs/
 
 *.sqlite3
 
-# Scheduler lock file
-scheduler.lock
-
 # Ignore tailwind output file
 **/style.css
 

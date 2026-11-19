@@ -7,13 +7,13 @@ preventing duplicate job execution in multi-worker deployments.
 import os
 import logging
 import atexit
+import tempfile
 from apscheduler.schedulers.background import BackgroundScheduler
-from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
 scheduler = None
-lock_file_path = os.path.join(settings.BASE_DIR, 'scheduler.lock')
+lock_file_path = os.path.join(tempfile.gettempdir(), 'visualfolio-scheduler.lock')
 
 
 def is_process_alive(pid):
