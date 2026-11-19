@@ -4,6 +4,10 @@ import zoneinfo
 from datetime import date
 
 from main.models import Account, Asset, Transaction
+from main.services.stateful.bank_data.currency_conversion_fallback import (
+    MarketCurrencyConversionError,
+    convert_amount_with_eod_market_data,
+)
 from main.services.stateful.bank_data.providers.gocardless.mapping import (
     TransactionMappingError,
     _parse_transaction_datetime,
@@ -48,20 +52,12 @@ def map_transactions(
     for raw_txn in transactions_response.get("transactions", []):
         amount_obj = raw_txn.get("transaction_amount", {})
         currency = amount_obj.get("currency", "")
-        if currency != expected_asset.code:
-            raise TransactionMappingError(
-                f"Expected transaction currency '{expected_asset.code}', got '{currency}'"
-            )
-
         amount = float(amount_obj.get("amount", 0))
         indicator = raw_txn.get("credit_debit_indicator", "")
         if indicator == "DBIT":
             amount = -abs(amount)
         elif indicator == "CRDT":
             amount = abs(amount)
-
-        if amount == 0:
-            continue
 
         booking_date_str = (
             raw_txn.get("booking_date")
@@ -74,6 +70,30 @@ def map_transactions(
             user_tz,
         )
         txn_date = txn_datetime.date()
+
+        if currency != expected_asset.code:
+            converted_amount = _extract_bank_converted_amount(
+                raw_txn.get("currency_exchange") or raw_txn.get("currencyExchange"),
+                amount,
+                expected_asset.code,
+            )
+            if converted_amount is None:
+                try:
+                    converted_amount = convert_amount_with_eod_market_data(
+                        amount=amount,
+                        source_currency=currency,
+                        target_currency=expected_asset.code,
+                        conversion_date=txn_date,
+                        txn_id=raw_txn.get("transaction_id") or "unknown",
+                    )
+                except MarketCurrencyConversionError as exc:
+                    raise TransactionMappingError(str(exc)) from exc
+            amount = converted_amount
+            currency = expected_asset.code
+
+        if amount == 0:
+            continue
+
         if txn_date < date_from or txn_date > date_to:
             continue
 
@@ -95,3 +115,40 @@ def map_transactions(
             )
         )
     return mapped
+
+
+def _extract_bank_converted_amount(
+    currency_exchange: dict | list | None,
+    source_amount: float,
+    expected_currency: str,
+) -> float | None:
+    """Extract converted amount from provider conversion payload when available."""
+    exchanges: list[dict]
+    if isinstance(currency_exchange, dict):
+        exchanges = [currency_exchange]
+    elif isinstance(currency_exchange, list):
+        exchanges = [exchange for exchange in currency_exchange if isinstance(exchange, dict)]
+    else:
+        return None
+
+    for exchange in exchanges:
+        target_currency = (
+            exchange.get("target_currency")
+            or exchange.get("targetCurrency")
+            or exchange.get("source_currency")
+            or exchange.get("sourceCurrency")
+        )
+        if target_currency != expected_currency:
+            continue
+        try:
+            if "target_amount" in exchange:
+                return float(exchange["target_amount"])
+            if "targetAmount" in exchange:
+                return float(exchange["targetAmount"])
+            rate = exchange.get("exchange_rate")
+            if rate is None:
+                rate = exchange.get("exchangeRate", 0)
+            return float(rate) * source_amount
+        except (TypeError, ValueError):
+            continue
+    return None
