@@ -23,6 +23,18 @@ def get_historical_prices_eur_demo_shifted():
     return df
 
 
+def _virtualize_date_back_in_time(target_date, first_date, last_date):
+    if target_date > last_date:
+        raise Exception(f"Only static demo market data is available. (timespan_end={target_date})")
+    if target_date >= first_date:
+        return target_date
+
+    span_days = (last_date - first_date).days + 1
+    days_back = (first_date - target_date).days
+    mapped_offset = (-days_back) % span_days
+    return first_date + datetime.timedelta(days=mapped_offset)
+
+
 def get_prices_daily(instrument, quote_currency, timespan_end, timespan=datetime.timedelta(days=0)):
     if instrument == quote_currency:
         timespan_start = timespan_end - timespan
@@ -44,13 +56,20 @@ def get_prices_daily(instrument, quote_currency, timespan_end, timespan=datetime
         if instrument not in data.columns:
             raise Exception(f"Only static demo market data is available. (instrument={instrument})")
 
-        if timespan_end not in data.index:
-            raise Exception(f"Only static demo market data is available. (timespan_end={timespan_end})")
+        first_date = data.index.min()
+        last_date = data.index.max()
 
-        if timespan_start not in data.index:
-            raise Exception(f"Only static demo market data is available. (timespan_start={timespan_start})")
-
-        values = data[instrument].loc[timespan_start:timespan_end]
-        values.index.name = "date"
+        if timespan == datetime.timedelta(days=0):
+            mapped_date = _virtualize_date_back_in_time(timespan_end, first_date, last_date)
+            values = pd.Series(
+                [float(data.at[mapped_date, instrument])],
+                index=pd.Index([timespan_end], name="date"),
+                name=instrument,
+            )
+        else:
+            date_range = pd.date_range(timespan_start, timespan_end, freq="D").to_series().apply(lambda x: x.date())
+            mapped_dates = date_range.apply(lambda d: _virtualize_date_back_in_time(d, first_date, last_date))
+            mapped_values = mapped_dates.apply(lambda d: float(data.at[d, instrument]))
+            values = pd.Series(mapped_values.values, index=pd.Index(date_range, name="date"), name=instrument)
 
     return values
