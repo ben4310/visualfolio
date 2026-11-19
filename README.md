@@ -52,6 +52,12 @@ cp env.example .env
 ```bash
 docker-compose up -d
 ```
+The stack runs `ghcr.io/visualfolio/visualfolio:latest`, which follows `main`; releases are tagged `X.Y.Z` and `X.Y`.
+
+**Bank connection (Enable Banking):**
+1. In the [Enable Banking Control Panel](https://enablebanking.com/), register a production application and activate it by linking your own bank accounts.
+2. Add `https://your-domain.com/bank/enable-banking/callback/` to the application's redirect URLs.
+3. Set `ENABLE_BANKING_APPLICATION_ID` and `ENABLE_BANKING_KEY_CONTENT` (output of `base64 -w 0 <application-id>.pem`) in `.env`, then restart the stack.
 
 **4) Set up external access:**
 
