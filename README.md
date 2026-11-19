@@ -51,7 +51,6 @@ cp env.example .env
 **3) Deploy:**
 ```bash
 docker-compose up -d
-docker-compose exec app python manage.py makemigrations
 docker-compose exec app python manage.py migrate
 ```
 
@@ -108,7 +107,6 @@ cloudflared tunnel run visualfolio
 - **In one terminal**, start the Docker containers:
   ```bash
   docker-compose -f docker-compose.dev.yml --env-file env.dev.example up -d
-  docker-compose -f docker-compose.dev.yml exec app-dev python manage.py makemigrations
   docker-compose -f docker-compose.dev.yml exec app-dev python manage.py migrate
   ```
 - **In a second terminal**, start the Tailwind CSS watcher (on host machine):
