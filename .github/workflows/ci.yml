@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: visualfolio
+          POSTGRES_PASSWORD: visualfolio
+          POSTGRES_DB: visualfolio
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U visualfolio"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DJANGO_SECRET_KEY: ci
+      DJANGO_DEBUG: "true"
+      DJANGO_ALLOWED_HOSTS: localhost
+      DATABASE_URL: postgresql://visualfolio:visualfolio@localhost:5432/visualfolio
+    defaults:
+      run:
+        working-directory: visualfolio
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Check that migrations match the models
+        run: uv run --no-project --python 3.12 --with-requirements requirements.txt python manage.py makemigrations --check --dry-run
+      - name: Run tests
+        run: uv run --no-project --python 3.12 --with-requirements requirements.txt python manage.py test main
