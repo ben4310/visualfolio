@@ -51,7 +51,6 @@ cp env.example .env
 **3) Deploy:**
 ```bash
 docker-compose up -d
-docker-compose exec app python manage.py migrate
 ```
 
 **4) Set up external access:**

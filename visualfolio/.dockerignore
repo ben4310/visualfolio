@@ -78,3 +78,6 @@ ssl/
 nginx.conf
 init-db.sql
 env.example
+# Build output
+staticfiles
+main/static/main/css/style.css
