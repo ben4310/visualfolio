@@ -34,8 +34,6 @@ services:
       GOCARDLESS_SECRET_KEY: ${GOCARDLESS_SECRET_KEY:-}
       ENABLE_BANKING_KEY_CONTENT: ${ENABLE_BANKING_KEY_CONTENT:-}
       ENABLE_BANKING_APPLICATION_ID: ${ENABLE_BANKING_APPLICATION_ID:-}
-    volumes:
-      - static_files:/app/staticfiles
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen(u.Request('http://localhost:8000/login/', headers={'X-Forwarded-Proto': 'https'}), timeout=10)"]
       interval: 30s
@@ -49,7 +47,6 @@ services:
 
 volumes:
   postgres_data:
-  static_files:
 
 networks:
   visualfolio-network:
