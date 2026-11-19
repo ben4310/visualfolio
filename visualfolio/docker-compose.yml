@@ -35,7 +35,7 @@ services:
       ENABLE_BANKING_KEY_CONTENT: ${ENABLE_BANKING_KEY_CONTENT:-}
       ENABLE_BANKING_APPLICATION_ID: ${ENABLE_BANKING_APPLICATION_ID:-}
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen(u.Request('http://localhost:8000/login/', headers={'X-Forwarded-Proto': 'https'}), timeout=10)"]
+      test: ["CMD", "python", "-c", "import os, time, urllib.request as u; u.urlopen(u.Request('http://localhost:8000/login/', headers={'X-Forwarded-Proto': 'https'}), timeout=10); assert time.time() - os.path.getmtime('/tmp/visualfolio-scheduler-heartbeat') < 4500"]
       interval: 30s
       timeout: 10s
       retries: 3
