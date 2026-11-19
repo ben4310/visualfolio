@@ -19,6 +19,10 @@ PROVIDER_CHOICES = [
 ]
 
 
+def timezone_choices():
+    return [(tz, tz) for tz in sorted(zoneinfo.available_timezones())]
+
+
 '''
 << Static models >>
 '''
@@ -55,11 +59,6 @@ class CustomUser(AbstractUser):
         ("dark", "Dark"),
     ]
 
-    TIMEZONE_CHOICES = sorted(
-        [(tz, tz) for tz in zoneinfo.available_timezones()],
-        key=lambda x: x[0],
-    )
-    
     last_update = models.DateTimeField(null=True, blank=True)
     last_full_refresh = models.DateTimeField(null=True, blank=True)
     
@@ -86,7 +85,7 @@ class CustomUser(AbstractUser):
     # Timezone preference
     user_timezone = models.CharField(
         max_length=63,
-        choices=TIMEZONE_CHOICES,
+        choices=timezone_choices,
         default="UTC",
         help_text="IANA timezone for date/time display and input",
     )
